@@ -32,8 +32,7 @@ module Types
       field :adjusted_fee, Boolean, null: false
       field :adjusted_fee_type, Types::AdjustedFees::AdjustedFeeTypeEnum, null: true
 
-      delegate :group_name, to: :object
-      delegate :invoice_name, to: :object
+      field :charge_filter, Types::ChargeFilters::Object, null: true
 
       def item_type
         object.fee_type

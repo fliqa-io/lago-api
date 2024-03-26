@@ -10,6 +10,8 @@ module BillableMetricFilters
     end
 
     def call
+      result.filters = []
+
       if filters_params.empty?
         discard_all
 
@@ -25,13 +27,20 @@ module BillableMetricFilters
 
             filter_values = filter.filter_values
               .where(billable_metric_filter_id: filter.id)
-              .where(value: deleted_values)
+              .where(values: deleted_values)
 
             filter_values.each { discard_filter_value(_1) }
           end
 
           filter.values = (filter_param[:values] || []).uniq
           filter.save!
+
+          result.filters << filter
+        end
+
+        # NOTE: discard all filters that were not created or updated
+        billable_metric.filters.where.not(id: result.filters.map(&:id)).find_each do
+          discard_filter(_1)
         end
       end
 
@@ -44,11 +53,13 @@ module BillableMetricFilters
 
     def discard_all
       ActiveRecord::Base.transaction do
-        billable_metric.filters.each do |filter|
-          filter.filter_values.each { discard_filter_value(_1) }
-          filter.discard!
-        end
+        billable_metric.filters.each { discard_filter(_1) }
       end
+    end
+
+    def discard_filter(filter)
+      filter.filter_values.each { discard_filter_value(_1) }
+      filter.discard!
     end
 
     def discard_filter_value(filter_value)

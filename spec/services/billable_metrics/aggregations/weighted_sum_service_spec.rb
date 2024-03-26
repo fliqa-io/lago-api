@@ -99,6 +99,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
 
       expect(result.aggregation.round(5).to_s).to eq('0.0')
       expect(result.count).to eq(0)
+      expect(result.options).to eq({})
     end
   end
 
@@ -339,7 +340,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
             billable_metric:,
             external_subscription_id: subscription.external_id,
             added_at: from_datetime - 1.day,
-            properties: { QuantifiedEvent::RECURRING_TOTAL_UNITS => 1000 },
+            properties: { QuantifiedEvent::RECURRING_TOTAL_UNITS => '1000' },
             grouped_by: { 'agent_name' => 'aragorn' },
           ),
 
@@ -348,7 +349,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
             billable_metric:,
             external_subscription_id: subscription.external_id,
             added_at: from_datetime - 1.day,
-            properties: { QuantifiedEvent::RECURRING_TOTAL_UNITS => 1000 },
+            properties: { QuantifiedEvent::RECURRING_TOTAL_UNITS => '1000' },
             grouped_by: { 'agent_name' => 'frodo' },
           ),
         ]

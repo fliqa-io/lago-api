@@ -51,7 +51,7 @@ RSpec.describe Invoices::CreatePayInAdvanceChargeService, type: :service do
 
     before do
       allow(Charges::PayInAdvanceAggregationService).to receive(:call)
-        .with(charge:, boundaries: Hash, group:, properties: Hash, event:)
+        .with(charge:, boundaries: Hash, group:, properties: Hash, event:, charge_filter: nil)
         .and_return(aggregation_result)
 
       allow(Charges::ApplyPayInAdvanceChargeModelService).to receive(:call)
@@ -151,28 +151,28 @@ RSpec.describe Invoices::CreatePayInAdvanceChargeService, type: :service do
       end.to have_enqueued_job(SendWebhookJob).with('fee.created', Fee)
     end
 
-    it 'does not enqueue an ActionMailer::MailDeliveryJob' do
+    it 'does not enqueue an SendEmailJob' do
       expect do
         invoice_service.call
-      end.not_to have_enqueued_job(ActionMailer::MailDeliveryJob)
+      end.not_to have_enqueued_job(SendEmailJob)
     end
 
     context 'with lago_premium' do
       around { |test| lago_premium!(&test) }
 
-      it 'enqueues an ActionMailer::MailDeliveryJob' do
+      it 'enqueues an SendEmailJob' do
         expect do
           invoice_service.call
-        end.to have_enqueued_job(ActionMailer::MailDeliveryJob)
+        end.to have_enqueued_job(SendEmailJob)
       end
 
       context 'when organization does not have right email settings' do
         let(:email_settings) { [] }
 
-        it 'does not enqueue an ActionMailer::MailDeliveryJob' do
+        it 'does not enqueue an SendEmailJob' do
           expect do
             invoice_service.call
-          end.not_to have_enqueued_job(ActionMailer::MailDeliveryJob)
+          end.not_to have_enqueued_job(SendEmailJob)
         end
       end
     end
@@ -196,6 +196,17 @@ RSpec.describe Invoices::CreatePayInAdvanceChargeService, type: :service do
 
         expect(result.invoice.issuing_date.to_s).to eq('2022-11-24')
         expect(result.invoice.payment_due_date.to_s).to eq('2022-11-24')
+      end
+    end
+
+    context 'with grace period' do
+      let(:customer) { create(:customer, organization:, invoice_grace_period: 3) }
+      let(:timestamp) { DateTime.parse('2022-11-25 08:00:00') }
+
+      it 'assigns the correct issuing date' do
+        result = invoice_service.call
+
+        expect(result.invoice.issuing_date.to_s).to eq('2022-11-25')
       end
     end
 

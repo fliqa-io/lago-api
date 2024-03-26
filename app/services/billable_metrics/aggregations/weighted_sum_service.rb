@@ -15,6 +15,7 @@ module BillableMetrics
         result.count = event_store.count
         result.variation = event_store.sum || 0
         result.total_aggregated_units = result.variation
+        result.options = {}
 
         if billable_metric.recurring?
           result.total_aggregated_units = latest_value + result.variation
@@ -76,6 +77,7 @@ module BillableMetrics
       def latest_value
         return @latest_value if @latest_value
 
+        # TODO: Should be moved to CachedAggregation
         quantified_events = QuantifiedEvent
           .where(billable_metric_id: billable_metric.id)
           .where(organization_id: billable_metric.organization_id)
@@ -85,6 +87,7 @@ module BillableMetrics
           .order(added_at: :desc)
 
         quantified_events = quantified_events.where(group_id: group.id) if group
+        quantified_events = quantified_events.where(charge_filter_id: charge_filter.id) if charge_filter
         quantified_event = quantified_events.first
 
         if quantified_event
@@ -115,6 +118,7 @@ module BillableMetrics
       def grouped_latest_values
         return @grouped_latest_values if @grouped_latest_values
 
+        # TODO: Should be moved to CachedAggregation
         quantified_events = QuantifiedEvent
           .where(billable_metric_id: billable_metric.id)
           .where(organization_id: billable_metric.organization_id)
@@ -127,12 +131,13 @@ module BillableMetrics
         end
 
         quantified_events = quantified_events.where(group_id: group.id) if group
+        quantified_events = quantified_events.where(charge_filter_id: charge_filter.id) if charge_filter
 
         if quantified_events.all.any?
           return @grouped_latest_values = quantified_events.map do |quantified_event|
             {
               groups: quantified_event.grouped_by,
-              value: quantified_event.properties.[](QuantifiedEvent::RECURRING_TOTAL_UNITS),
+              value: BigDecimal(quantified_event.properties.[](QuantifiedEvent::RECURRING_TOTAL_UNITS)),
             }
           end
         end

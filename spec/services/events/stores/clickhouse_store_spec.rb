@@ -8,7 +8,13 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
       code:,
       subscription:,
       boundaries:,
-      filters: { group:, grouped_by:, grouped_by_values: },
+      filters: {
+        group:,
+        grouped_by:,
+        grouped_by_values:,
+        matching_filters:,
+        ignored_filters:,
+      },
     )
   end
 
@@ -32,6 +38,8 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
   let(:group) { nil }
   let(:grouped_by) { nil }
   let(:grouped_by_values) { nil }
+  let(:matching_filters) { {} }
+  let(:ignored_filters) { [] }
 
   let(:events) do
     events = []
@@ -41,6 +49,7 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
       if i.even?
         properties[group.key.to_s] = group.value.to_s if group
+        matching_filters.each { |key, values| properties[key] = values.first }
 
         if grouped_by_values.present?
           grouped_by_values.each { |grouped_by, value| properties[grouped_by] = value }
@@ -50,6 +59,8 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
           end
         end
       end
+
+      (ignored_filters.first || {}).each { |key, values| properties[key] = values.first } if i.zero?
 
       events << Clickhouse::EventsRaw.create!(
         transaction_id: SecureRandom.uuid,
@@ -101,6 +112,15 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
         expect(event_store.events.count).to eq(3)
       end
     end
+
+    context 'with filters' do
+      let(:matching_filters) { { 'region' => ['europe'], 'country' => ['france'] } }
+      let(:ignored_filters) { [{ 'city' => ['paris'] }, { 'city' => ['londons'], 'country' => ['united kingdom'] }] }
+
+      it 'returns a list of events' do
+        expect(event_store.events.count).to eq(2) # 1st event is ignored
+      end
+    end
   end
 
   describe '.count' do
@@ -148,6 +168,358 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
           expect(row[:value]).to eq(1)
         end
       end
+    end
+  end
+
+  describe '#active_unique_property?' do
+    before { event_store.aggregation_property = billable_metric.field_name }
+
+    it 'returns false when no previous events exist' do
+      event = ::Clickhouse::EventsRaw.create!(
+        organization_id: organization.id,
+        external_subscription_id: subscription.external_id,
+        external_customer_id: customer.external_id,
+        code:,
+        timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
+        properties: {
+          billable_metric.field_name => SecureRandom.uuid,
+        },
+      )
+
+      expect(event_store).not_to be_active_unique_property(event)
+    end
+
+    context 'when event is already active' do
+      it 'returns true if the event property is active' do
+        ::Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
+          properties: {
+            billable_metric.field_name => 2,
+          },
+        )
+
+        event = ::Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: (boundaries[:from_datetime] + 3.days).end_of_day,
+          properties: {
+            billable_metric.field_name => 2,
+          },
+        )
+
+        expect(event_store).to be_active_unique_property(event)
+      end
+    end
+
+    context 'with a previous removed event' do
+      it 'returns false' do
+        ::Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
+          properties: {
+            billable_metric.field_name => 2,
+            operation_type: 'remove',
+          },
+        )
+
+        event = ::Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: (boundaries[:from_datetime] + 3.days).end_of_day,
+          properties: {
+            billable_metric.field_name => 2,
+          },
+        )
+
+        expect(event_store).not_to be_active_unique_property(event)
+      end
+    end
+  end
+
+  describe '#unique_count' do
+    it 'returns the number of unique active event properties' do
+      Clickhouse::EventsRaw.create!(
+        transaction_id: SecureRandom.uuid,
+        organization_id: organization.id,
+        external_subscription_id: subscription.external_id,
+        external_customer_id: customer.external_id,
+        code:,
+        timestamp: boundaries[:from_datetime] + 3.days,
+        properties: {
+          billable_metric.field_name => 2,
+          operation_type: 'remove',
+        },
+      )
+
+      event_store.aggregation_property = billable_metric.field_name
+
+      expect(event_store.unique_count).to eq(4) # 5 events added / 1 removed
+    end
+  end
+
+  describe '#prorated_unique_count' do
+    it 'returns the number of unique active event properties' do
+      Clickhouse::EventsRaw.create!(
+        transaction_id: SecureRandom.uuid,
+        organization_id: organization.id,
+        external_subscription_id: subscription.external_id,
+        external_customer_id: customer.external_id,
+        code:,
+        timestamp: boundaries[:from_datetime] + 1.day,
+        properties: {
+          billable_metric.field_name => 2,
+        },
+      )
+
+      Clickhouse::EventsRaw.create!(
+        transaction_id: SecureRandom.uuid,
+        organization_id: organization.id,
+        external_subscription_id: subscription.external_id,
+        external_customer_id: customer.external_id,
+        code:,
+        timestamp: (boundaries[:from_datetime] + 1.day).end_of_day,
+        properties: {
+          billable_metric.field_name => 2,
+          operation_type: 'remove',
+        },
+      )
+
+      event_store.aggregation_property = billable_metric.field_name
+
+      # NOTE: Events calculation: 16/31 + 1/31 + + 15/31 + 14/31 + 13/31 + 12/31
+      expect(event_store.prorated_unique_count.round(3)).to eq(2.29)
+    end
+  end
+
+  describe '#grouped_unique_count' do
+    let(:grouped_by) { %w[agent_name other] }
+    let(:started_at) { Time.zone.parse('2023-03-01') }
+
+    let(:events) do
+      [
+        Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: boundaries[:from_datetime] + 1.hour,
+          properties: {
+            billable_metric.field_name => 2,
+            agent_name: 'frodo',
+          },
+        ),
+        Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: boundaries[:from_datetime] + 1.day,
+          properties: {
+            billable_metric.field_name => 2,
+            agent_name: 'aragorn',
+          },
+        ),
+        Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: boundaries[:from_datetime] + 2.days,
+          properties: {
+            billable_metric.field_name => 2,
+            agent_name: 'aragorn',
+            operation_type: 'remove',
+          },
+        ),
+        Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: boundaries[:from_datetime] + 2.days,
+          properties: { billable_metric.field_name => 2 },
+        ),
+      ]
+    end
+
+    before do
+      event_store.aggregation_property = billable_metric.field_name
+    end
+
+    it 'returns the unique count of event properties' do
+      result = event_store.grouped_unique_count
+
+      expect(result.count).to eq(3)
+
+      null_group = result.find { |v| v[:groups]['agent_name'].nil? }
+      expect(null_group[:groups]['other']).to be_nil
+      expect(null_group[:value]).to eq(1)
+
+      expect((result - [null_group]).map { |r| r[:value] }).to contain_exactly(1, 0)
+    end
+
+    context 'with no events' do
+      let(:events) { [] }
+
+      it 'returns the unique count of event properties' do
+        result = event_store.grouped_unique_count
+        expect(result.count).to eq(0)
+      end
+    end
+  end
+
+  describe '#grouped_prorated_unique_count' do
+    let(:grouped_by) { %w[agent_name other] }
+    let(:started_at) { Time.zone.parse('2023-03-01') }
+
+    let(:events) do
+      [
+        Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: boundaries[:from_datetime] + 1.day,
+          properties: {
+            billable_metric.field_name => 2,
+            agent_name: 'frodo',
+          },
+        ),
+        Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: boundaries[:from_datetime] + 1.day,
+          properties: {
+            billable_metric.field_name => 2,
+            agent_name: 'aragorn',
+          },
+        ),
+        Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: (boundaries[:from_datetime] + 1.day).end_of_day,
+          properties: {
+            billable_metric.field_name => 2,
+            agent_name: 'aragorn',
+            operation_type: 'remove',
+          },
+        ),
+        Clickhouse::EventsRaw.create!(
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          external_customer_id: customer.external_id,
+          code:,
+          timestamp: boundaries[:from_datetime] + 2.days,
+          properties: { billable_metric.field_name => 2 },
+        ),
+      ]
+    end
+
+    before do
+      event_store.aggregation_property = billable_metric.field_name
+    end
+
+    it 'returns the unique count of event properties' do
+      result = event_store.grouped_prorated_unique_count
+
+      expect(result.count).to eq(3)
+
+      null_group = result.find { |v| v[:groups]['agent_name'].nil? }
+      expect(null_group[:groups]['other']).to be_nil
+      expect(null_group[:value].round(3)).to eq(0.935) # 29/31
+
+      # NOTE: Events calculation: [1/31, 30/31]
+      expect((result - [null_group]).map { |r| r[:value].round(3) }).to contain_exactly(0.032, 0.968)
+    end
+
+    context 'with no events' do
+      let(:events) { [] }
+
+      it 'returns the unique count of event properties' do
+        result = event_store.grouped_prorated_unique_count
+        expect(result.count).to eq(0)
+      end
+    end
+  end
+
+  describe '#prorated_unique_count_breakdown' do
+    it 'returns the breakdown of add and remove of unique event properties' do
+      Clickhouse::EventsRaw.create!(
+        transaction_id: SecureRandom.uuid,
+        organization_id: organization.id,
+        external_subscription_id: subscription.external_id,
+        external_customer_id: customer.external_id,
+        code:,
+        timestamp: boundaries[:from_datetime] + 1.day,
+        properties: {
+          billable_metric.field_name => 2,
+        },
+      )
+
+      Clickhouse::EventsRaw.create!(
+        transaction_id: SecureRandom.uuid,
+        organization_id: organization.id,
+        external_subscription_id: subscription.external_id,
+        external_customer_id: customer.external_id,
+        code:,
+        timestamp: (boundaries[:from_datetime] + 1.day).end_of_day,
+        properties: {
+          billable_metric.field_name => 2,
+          operation_type: 'remove',
+        },
+      )
+
+      event_store.aggregation_property = billable_metric.field_name
+
+      result = event_store.prorated_unique_count_breakdown
+      expect(result.count).to eq(6)
+
+      grouped_result = result.group_by { |r| r['property'] }
+
+      # NOTE: group with property 1
+      group = grouped_result['1']
+      expect(group.count).to eq(1)
+      expect(group.first['prorated_value'].round(3)).to eq(0.516) # 16/31
+      expect(group.first['operation_type']).to eq('add')
+
+      # NOTE: group with property 2 (added and removed)
+      group = grouped_result['2']
+      expect(group.first['prorated_value'].round(3)).to eq(0.032) # 1/31
+      expect(group.last['prorated_value'].round(3)).to eq(0.484) # 15/31
+      expect(group.count).to eq(2)
+
+      # NOTE: group with property 3
+      group = grouped_result['3']
+      expect(group.count).to eq(1)
+      expect(group.first['prorated_value'].round(3)).to eq(0.452) # 14/31
+      expect(group.first['operation_type']).to eq('add')
+
+      # NOTE: group with property 4
+      group = grouped_result['4']
+      expect(group.count).to eq(1)
+      expect(group.first['prorated_value'].round(3)).to eq(0.419) # 13/31
+      expect(group.first['operation_type']).to eq('add')
+
+      # NOTE: group with property 5
+      group = grouped_result['5']
+      expect(group.count).to eq(1)
+      expect(group.first['prorated_value'].round(3)).to eq(0.387) # 12/31
+      expect(group.first['operation_type']).to eq('add')
     end
   end
 

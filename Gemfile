@@ -16,12 +16,13 @@ gem 'sidekiq'
 
 # Security
 gem 'bcrypt'
-gem 'googleauth', require: false
+gem 'googleauth', '~> 1.11.0'
 gem 'jwt'
 gem 'oauth2'
 gem 'rack-cors'
 
 # Database
+gem 'after_commit_everywhere'
 gem 'clickhouse-activerecord', git: 'https://github.com/getlago/clickhouse-activerecord.git'
 gem 'discard', '~> 1.2'
 gem 'kaminari-activerecord'
@@ -112,4 +113,6 @@ group :development do
 
   gem 'sass-rails'
   gem 'uglifier'
+
+  gem 'ruby-lsp-rails', require: false
 end

@@ -63,6 +63,7 @@ RSpec.describe Fees::SubscriptionService do
         payment_status: 'pending',
         unit_amount_cents: 100,
         precise_unit_amount: 1,
+        amount_details: { 'plan_amount_cents' => 100 },
       )
     end
 
@@ -83,11 +84,12 @@ RSpec.describe Fees::SubscriptionService do
             amount_cents: 90,
             unit_amount_cents: 90,
             precise_unit_amount: 0.9,
+            amount_details: { 'plan_amount_cents' => 100 },
           )
         end
       end
 
-      context 'when trial end after end of period' do
+      context 'when trial ends after end of period' do
         let(:trial_duration) { 45 }
 
         it 'creates a fee with zero amount' do
@@ -656,6 +658,23 @@ RSpec.describe Fees::SubscriptionService do
 
               expect(result.fee.amount_cents).to eq(1600)
             end
+
+            context 'with customer timezone' do
+              let(:customer) { create(:customer, organization:, timezone: 'Europe/Paris') }
+              let(:boundaries) do
+                {
+                  from_datetime: Time.zone.parse('2022-08-30 22:00:00'),
+                  to_datetime: Time.zone.parse('2022-09-30 21:59:59'),
+                  timestamp: Time.zone.parse('2022-10-01 00:00').to_i,
+                }
+              end
+
+              it 'creates a fee with prorated amount based on trial' do
+                result = fees_subscription_service.create
+
+                expect(result.fee.amount_cents).to eq(1600)
+              end
+            end
           end
         end
       end
@@ -997,7 +1016,7 @@ RSpec.describe Fees::SubscriptionService do
         expect(result.fee).to have_attributes(
           id: String,
           invoice_id: invoice.id,
-          amount_cents: 65,
+          amount_cents: 61, # 100/31 * 19
           amount_currency: plan.amount_currency,
           units: 1,
         )
@@ -1016,7 +1035,7 @@ RSpec.describe Fees::SubscriptionService do
         it 'creates a fee with prorated amount based on trial period' do
           result = fees_subscription_service.create
 
-          expect(result.fee.amount_cents).to eq(10)
+          expect(result.fee.amount_cents).to eq(6) # 2 days * (100 / 31)
         end
       end
 

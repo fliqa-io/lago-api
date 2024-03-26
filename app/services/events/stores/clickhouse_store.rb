@@ -14,16 +14,13 @@ module Events
           .where(code:)
           .order(timestamp: :asc)
 
-        # TODO: check how to deal with this since events are not stored forever in clickhouse
         scope = scope.where('events_raw.timestamp >= ?', from_datetime) if force_from || use_from_boundary
         scope = scope.where('events_raw.timestamp <= ?', to_datetime) if to_datetime
         scope = scope.where(numeric_condition) if numeric_property
 
         scope = with_grouped_by_values(scope) if grouped_by_values?
-
-        return scope unless group
-
-        group_scope(scope)
+        scope = group_scope(scope) if group.present?
+        filters_scope(scope)
       end
 
       def events_values(limit: nil, force_from: false)
@@ -106,6 +103,113 @@ module Events
           group by #{group_names.join(',')}
         SQL
 
+        prepare_grouped_result(::Clickhouse::EventsRaw.connection.select_all(sql).rows)
+      end
+
+      # NOTE: check if an event created before the current on belongs to an active (as in present and not removed)
+      #       unique property
+      def active_unique_property?(event)
+        previous_event = events
+          .where('events_raw.properties[?] = ?', aggregation_property, event.properties[aggregation_property])
+          .where('events_raw.timestamp < ?', event.timestamp)
+          .reorder(timestamp: :desc)
+          .first
+
+        previous_event && (
+          previous_event.properties['operation_type'].nil? ||
+          previous_event.properties['operation_type'] == 'add'
+        )
+      end
+
+      def unique_count
+        query = Events::Stores::Clickhouse::UniqueCountQuery.new(store: self)
+        sql = ActiveRecord::Base.sanitize_sql_for_conditions(
+          [
+            query.query,
+            { decimal_scale: DECIMAL_SCALE },
+          ],
+        )
+        result = ::Clickhouse::EventsRaw.connection.select_one(sql)
+
+        result['aggregation']
+      end
+
+      # NOTE: not used in production, only for debug purpose to check the computed values before aggregation
+      def unique_count_breakdown
+        query = Events::Stores::Clickhouse::UniqueCountQuery.new(store: self)
+        ::Clickhouse::EventsRaw.connection.select_all(
+          ActiveRecord::Base.sanitize_sql_for_conditions(
+            [
+              query.breakdown_query,
+              { decimal_scale: DECIMAL_SCALE },
+            ],
+          ),
+        ).rows
+      end
+
+      def prorated_unique_count
+        query = Events::Stores::Clickhouse::UniqueCountQuery.new(store: self)
+        sql = ActiveRecord::Base.sanitize_sql_for_conditions(
+          [
+            query.prorated_query,
+            {
+              from_datetime:,
+              to_datetime: to_datetime.ceil,
+              decimal_scale: DECIMAL_SCALE,
+              timezone: customer.applicable_timezone,
+            },
+          ],
+        )
+        result = ::Clickhouse::EventsRaw.connection.select_one(sql)
+
+        result['aggregation']
+      end
+
+      def prorated_unique_count_breakdown(with_remove: false)
+        query = Events::Stores::Clickhouse::UniqueCountQuery.new(store: self)
+        sql = ActiveRecord::Base.sanitize_sql_for_conditions(
+          [
+            query.prorated_breakdown_query(with_remove:),
+            {
+              from_datetime:,
+              to_datetime: to_datetime.ceil,
+              decimal_scale: DECIMAL_SCALE,
+              timezone: customer.applicable_timezone,
+            },
+          ],
+        )
+
+        ::Clickhouse::EventsRaw.connection.select_all(sql).to_a
+      end
+
+      def grouped_unique_count
+        query = Events::Stores::Clickhouse::UniqueCountQuery.new(store: self)
+        sql = ActiveRecord::Base.sanitize_sql_for_conditions(
+          [
+            query.grouped_query,
+            {
+              to_datetime: to_datetime.ceil,
+              decimal_scale: DECIMAL_SCALE,
+            },
+          ],
+        )
+
+        prepare_grouped_result(::Clickhouse::EventsRaw.connection.select_all(sql).rows)
+      end
+
+      def grouped_prorated_unique_count
+        query = Events::Stores::Clickhouse::UniqueCountQuery.new(store: self)
+        sql = ActiveRecord::Base.sanitize_sql_for_conditions(
+          [
+            query.grouped_prorated_query,
+            {
+              from_datetime:,
+              to_datetime: to_datetime.ceil,
+              decimal_scale: DECIMAL_SCALE,
+              timezone: customer.applicable_timezone,
+            },
+          ],
+        )
         prepare_grouped_result(::Clickhouse::EventsRaw.connection.select_all(sql).rows)
       end
 
@@ -359,6 +463,24 @@ module Events
         return scope unless group.parent
 
         scope.where('events_raw.properties[?] = ?', group.parent.key.to_s, group.parent.value.to_s)
+      end
+
+      def filters_scope(scope)
+        matching_filters.each do |key, values|
+          scope = scope.where('events_raw.properties[?] IN ?', key.to_s, values)
+        end
+
+        ignored_filters.each do |filters|
+          sql = filters.map do |key, values|
+            ActiveRecord::Base.sanitize_sql_for_conditions(
+              ["(coalesce(events_raw.properties[?], '') IN (?))", key.to_s, values.map(&:to_s)],
+            )
+          end.join(' OR ')
+
+          scope = scope.where.not(sql)
+        end
+
+        scope
       end
 
       def with_grouped_by_values(scope)
