@@ -44,6 +44,7 @@ module Utils
         marginBottom: '0.42',
         marginLeft: '0.42',
         marginRight: '0.42',
+        skipNetworkIdleEvent: 'true'
       )
 
       response.body.force_encoding('UTF-8')
