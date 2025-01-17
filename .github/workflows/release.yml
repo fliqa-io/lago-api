@@ -8,7 +8,7 @@ on:
         description: Version
         required: true
 env:
-  REGISTRY_IMAGE: getlago/api
+  REGISTRY_IMAGE: fliqa/lagoapi
 
 jobs:
   build-images:
