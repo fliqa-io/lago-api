@@ -10,13 +10,15 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
       subscription:,
       boundaries: {
         from_datetime:,
-        to_datetime:,
+        to_datetime:
       },
       filters:,
+      bypass_aggregation:
     )
   end
 
   let(:event_store_class) { Events::Stores::PostgresStore }
+  let(:bypass_aggregation) { false }
   let(:filters) { {grouped_by:, matching_filters:, ignored_filters:} }
 
   let(:subscription) { create(:subscription) }
@@ -31,14 +33,14 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
       :billable_metric,
       organization:,
       aggregation_type: 'latest_agg',
-      field_name: 'total_count',
+      field_name: 'total_count'
     )
   end
 
   let(:charge) do
     create(
       :standard_charge,
-      billable_metric:,
+      billable_metric:
     )
   end
 
@@ -56,8 +58,8 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
         subscription:,
         timestamp: Time.current - 2.days,
         properties: {
-          total_count: 18,
-        },
+          total_count: 18
+        }
       ),
 
       create(
@@ -68,9 +70,9 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
         subscription:,
         timestamp: Time.current - 1.day,
         properties: {
-          total_count: 14,
-        },
-      ),
+          total_count: 14
+        }
+      )
     ].flatten
   end
 
@@ -118,9 +120,9 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
           subscription:,
           timestamp: Time.current,
           properties: {
-            total_count: 14.2,
-          },
-        ),
+            total_count: 14.2
+          }
+        )
       ]
     end
 
@@ -142,9 +144,9 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
           subscription:,
           timestamp: Time.current,
           properties: {
-            total_count: -5,
-          },
-        ),
+            total_count: -5
+          }
+        )
       ]
     end
 
@@ -164,8 +166,8 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
           code: billable_metric.code,
           customer:,
           subscription:,
-          timestamp: Time.current,
-        ),
+          timestamp: Time.current
+        )
       ]
     end
 
@@ -191,8 +193,8 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
           timestamp: Time.current - 2.seconds,
           properties: {
             total_count: 12,
-            region: 'europe',
-          },
+            region: 'europe'
+          }
         ),
 
         create(
@@ -204,8 +206,8 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
           timestamp: Time.current - 1.second,
           properties: {
             total_count: 8,
-            region: 'europe',
-          },
+            region: 'europe'
+          }
         ),
 
         create(
@@ -217,9 +219,9 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
           timestamp: Time.current - 1.second,
           properties: {
             total_count: 12,
-            region: 'africa',
-          },
-        ),
+            region: 'africa'
+          }
+        )
       ].flatten
     end
 
@@ -228,6 +230,19 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
 
       expect(result.aggregation).to eq(8)
       expect(result.count).to eq(2)
+    end
+  end
+
+  context 'when bypass_aggregation is set to true' do
+    let(:bypass_aggregation) { true }
+
+    it 'returns a default empty result' do
+      result = latest_service.aggregate
+
+      expect(result.aggregation).to eq(0)
+      expect(result.count).to eq(0)
+      expect(result.current_usage_units).to eq(0)
+      expect(result.options).to eq({running_total: []})
     end
   end
 
@@ -246,8 +261,8 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
           timestamp: Time.zone.now - 1.day,
           properties: {
             total_count: 12,
-            agent_name:,
-          },
+            agent_name:
+          }
         )
       end + [
         create(
@@ -258,9 +273,9 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
           subscription:,
           timestamp: Time.zone.now - 1.day,
           properties: {
-            total_count: 12,
-          },
-        ),
+            total_count: 12
+          }
+        )
       ]
     end
 
@@ -279,6 +294,21 @@ RSpec.describe BillableMetrics::Aggregations::LatestService, type: :service do
 
     context 'without events' do
       let(:events) { [] }
+
+      it 'returns an empty result' do
+        result = latest_service.aggregate
+
+        expect(result.aggregations.count).to eq(1)
+
+        aggregation = result.aggregations.first
+        expect(aggregation.aggregation).to eq(0)
+        expect(aggregation.count).to eq(0)
+        expect(aggregation.grouped_by).to eq({'agent_name' => nil})
+      end
+    end
+
+    context 'when bypass_aggregation is set to true' do
+      let(:bypass_aggregation) { true }
 
       it 'returns an empty result' do
         result = latest_service.aggregate

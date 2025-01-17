@@ -15,6 +15,10 @@ RSpec.describe Mutations::Customers::Create, type: :graphql do
         createCustomer(input: $input) {
           id
           name
+          firstname
+          lastname
+          displayName
+          customerType
           externalId
           city
           country
@@ -26,7 +30,9 @@ RSpec.describe Mutations::Customers::Create, type: :graphql do
           netPaymentTerm
           canEditAttributes
           invoiceGracePeriod
+          finalizeZeroAmountInvoice
           billingConfiguration { documentLocale }
+          shippingAddress { addressLine1 city state }
           metadata { id, key, value, displayInInvoice }
           taxes { code }
         }
@@ -37,7 +43,7 @@ RSpec.describe Mutations::Customers::Create, type: :graphql do
   let(:body) do
     {
       object: 'event',
-      data: {url: 'test.url'},
+      data: {url: 'test.url'}
     }
   end
 
@@ -60,7 +66,10 @@ RSpec.describe Mutations::Customers::Create, type: :graphql do
       query: mutation,
       variables: {
         input: {
-          name: 'John Doe',
+          name: 'John Doe Inc',
+          firstname: 'John',
+          lastname: 'Doe',
+          customerType: 'company',
           externalId: 'john_doe_2',
           city: 'London',
           country: 'GB',
@@ -68,30 +77,41 @@ RSpec.describe Mutations::Customers::Create, type: :graphql do
           taxIdentificationNumber: '123456789',
           currency: 'EUR',
           netPaymentTerm: 30,
+          finalizeZeroAmountInvoice: 'skip',
           providerCustomer: {
             providerCustomerId: 'cu_12345',
-            providerPaymentMethods: ['card'],
+            providerPaymentMethods: ['card']
           },
           billingConfiguration: {
-            documentLocale: 'fr',
+            documentLocale: 'fr'
+          },
+          shippingAddress: {
+            addressLine1: 'Test 12',
+            zipcode: '102030',
+            state: 'test state',
+            city: 'Paris'
           },
           metadata: [
             {
               key: 'manager',
               value: 'John Doe',
-              displayInInvoice: true,
-            },
+              displayInInvoice: true
+            }
           ],
-          taxCodes: [tax.code],
-        },
-      },
+          taxCodes: [tax.code]
+        }
+      }
     )
 
     result_data = result['data']['createCustomer']
 
     aggregate_failures do
       expect(result_data['id']).to be_present
-      expect(result_data['name']).to eq('John Doe')
+      expect(result_data['name']).to eq('John Doe Inc')
+      expect(result_data['firstname']).to eq('John')
+      expect(result_data['lastname']).to eq('Doe')
+      expect(result_data['displayName']).to eq('John Doe Inc - John Doe')
+      expect(result_data['customerType']).to eq('company')
       expect(result_data['externalId']).to eq('john_doe_2')
       expect(result_data['city']).to eq('London')
       expect(result_data['country']).to eq('GB')
@@ -102,7 +122,11 @@ RSpec.describe Mutations::Customers::Create, type: :graphql do
       expect(result_data['providerCustomer']['providerCustomerId']).to eq('cu_12345')
       expect(result_data['providerCustomer']['providerPaymentMethods']).to eq(['card'])
       expect(result_data['billingConfiguration']['documentLocale']).to eq('fr')
+      expect(result_data['shippingAddress']['addressLine1']).to eq('Test 12')
+      expect(result_data['shippingAddress']['city']).to eq('Paris')
+      expect(result_data['shippingAddress']['state']).to eq('test state')
       expect(result_data['netPaymentTerm']).to eq(30)
+      expect(result_data['finalizeZeroAmountInvoice']).to eq('skip')
       expect(result_data['metadata'].count).to eq(1)
       expect(result_data['metadata'][0]['value']).to eq('John Doe')
       expect(result_data['taxes'][0]['code']).to eq(tax.code)
@@ -131,10 +155,10 @@ RSpec.describe Mutations::Customers::Create, type: :graphql do
             timezone: 'TZ_EUROPE_PARIS',
             providerCustomer: {
               providerCustomerId: 'cu_12345',
-              providerPaymentMethods: ['card'],
-            },
-          },
-        },
+              providerPaymentMethods: ['card']
+            }
+          }
+        }
       )
 
       result_data = result['data']['createCustomer']
@@ -158,9 +182,9 @@ RSpec.describe Mutations::Customers::Create, type: :graphql do
             name: 'John Doe',
             externalId: 'john_doe_2',
             city: 'London',
-            country: 0,
-          },
-        },
+            country: 0
+          }
+        }
       )
 
       expect(result['errors']).to be_present

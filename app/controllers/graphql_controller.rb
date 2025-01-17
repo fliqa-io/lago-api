@@ -28,9 +28,14 @@ class GraphqlController < ApplicationController
       request:,
       permissions:
         current_user&.memberships&.find_by(organization: current_organization)&.permissions_hash ||
-          Permission::EMPTY_PERMISSIONS_HASH,
+          Permission::EMPTY_PERMISSIONS_HASH
     }
-    result = LagoApiSchema.execute(query, variables:, context:, operation_name:)
+
+    OpenTelemetry::Trace.current_span.add_attributes({"query" => query, "operation_name" => operation_name})
+    result = LagoTracer.in_span("LagoApiSchema.execute") do
+      LagoApiSchema.execute(query, variables:, context:, operation_name:)
+    end
+
     render(json: result)
   rescue JWT::ExpiredSignature
     render_graphql_error(code: 'expired_jwt_token', status: 401)
@@ -76,10 +81,10 @@ class GraphqlController < ApplicationController
         errors: [
           {
             message: message || code,
-            extensions: {status:, code:},
-          },
-        ],
-      },
+            extensions: {status:, code:}
+          }
+        ]
+      }
     )
   end
 

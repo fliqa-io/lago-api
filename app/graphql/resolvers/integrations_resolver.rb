@@ -27,6 +27,16 @@ module Resolvers
       case type
       when 'netsuite'
         'Integrations::NetsuiteIntegration'
+      when 'okta'
+        'Integrations::OktaIntegration'
+      when 'anrok'
+        'Integrations::AnrokIntegration'
+      when 'xero'
+        'Integrations::XeroIntegration'
+      when 'hubspot'
+        'Integrations::HubspotIntegration'
+      when 'salesforce'
+        'Integrations::SalesforceIntegration'
       else
         raise(NotImplementedError)
       end

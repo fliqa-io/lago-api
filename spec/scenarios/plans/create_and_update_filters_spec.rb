@@ -42,31 +42,31 @@ RSpec.describe 'Create and edit plans with charge filters', :scenarios, type: :r
               {
                 invoice_display_name: 'f1',
                 properties: {amount: '10'},
-                values: {image_size: ['512x152'], steps: ['0-25'], model_name: ['llama-2']},
+                values: {image_size: ['512x152'], steps: ['0-25'], model_name: ['llama-2']}
               },
               {
                 invoice_display_name: 'f2',
                 properties: {amount: '5'},
-                values: {image_size: ['512x152'], steps: ['0-25']},
+                values: {image_size: ['512x152'], steps: ['0-25']}
               },
               {
                 invoice_display_name: 'f3',
                 properties: {amount: '5'},
                 values: {
                   image_size: [ChargeFilterValue::ALL_FILTER_VALUES],
-                  steps: [ChargeFilterValue::ALL_FILTER_VALUES],
-                },
+                  steps: [ChargeFilterValue::ALL_FILTER_VALUES]
+                }
               },
               {
                 invoice_display_name: 'f4',
                 properties: {amount: '2.5'},
                 values: {
-                  image_size: [ChargeFilterValue::ALL_FILTER_VALUES],
-                },
-              },
-            ],
-          },
-        ],
+                  image_size: [ChargeFilterValue::ALL_FILTER_VALUES]
+                }
+              }
+            ]
+          }
+        ]
       )
     end
 
@@ -83,8 +83,8 @@ RSpec.describe 'Create and edit plans with charge filters', :scenarios, type: :r
         filters: [
           {key: 'image_size', values: %w[1024x1024 512x512]},
           {key: 'steps', values: %w[0-25 26-50 51-100]},
-          {key: 'model_name', values: %w[llama-1 llama-2 llama-3]},
-        ],
+          {key: 'model_name', values: %w[llama-1 llama-2 llama-3]}
+        ]
       )
     end
 
@@ -121,36 +121,36 @@ RSpec.describe 'Create and edit plans with charge filters', :scenarios, type: :r
               {
                 invoice_display_name: 'f2',
                 properties: {amount: '5'},
-                values: {image_size: ['512x512'], steps: ['0-25']},
+                values: {image_size: ['512x512'], steps: ['0-25']}
               },
               {
                 invoice_display_name: 'f3',
                 properties: {amount: '5'},
                 values: {
                   image_size: [ChargeFilterValue::ALL_FILTER_VALUES],
-                  steps: [ChargeFilterValue::ALL_FILTER_VALUES],
-                },
+                  steps: [ChargeFilterValue::ALL_FILTER_VALUES]
+                }
               },
               {
                 invoice_display_name: 'f4',
                 properties: {amount: '2.5'},
                 values: {
-                  image_size: [ChargeFilterValue::ALL_FILTER_VALUES],
-                },
+                  image_size: [ChargeFilterValue::ALL_FILTER_VALUES]
+                }
               },
               {
                 invoice_display_name: 'f1',
                 properties: {amount: '10'},
-                values: {image_size: ['512x512'], steps: ['0-25'], model_name: ['llama-2']},
+                values: {image_size: ['512x512'], steps: ['0-25'], model_name: ['llama-2']}
               },
               {
                 invoice_display_name: 'f5',
                 properties: {amount: '1'},
-                values: {image_size: ['1024x1024']},
-              },
-            ],
-          },
-        ],
+                values: {image_size: ['1024x1024']}
+              }
+            ]
+          }
+        ]
       )
 
       plan.reload
@@ -164,7 +164,7 @@ RSpec.describe 'Create and edit plans with charge filters', :scenarios, type: :r
         external_customer_id: customer.external_id,
         external_id: customer.external_id,
         plan_code: plan.code,
-        billing_time: 'anniversary',
+        billing_time: 'anniversary'
       )
     end
 
@@ -181,8 +181,8 @@ RSpec.describe 'Create and edit plans with charge filters', :scenarios, type: :r
           value: 10,
           image_size: '512x512',
           steps: '0-25',
-          model: 'llama-3',
-        },
+          model: 'llama-3'
+        }
       )
 
       create_event(
@@ -193,8 +193,8 @@ RSpec.describe 'Create and edit plans with charge filters', :scenarios, type: :r
           value: 10,
           image: '512x512',
           step: '0-25',
-          model: 'llama-3',
-        },
+          model: 'llama-3'
+        }
       )
 
       fetch_current_usage(customer:)

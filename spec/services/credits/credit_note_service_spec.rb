@@ -3,19 +3,14 @@
 require 'rails_helper'
 
 RSpec.describe Credits::CreditNoteService do
-  subject(:credit_service) do
-    described_class.new(
-      invoice:,
-      credit_notes: [credit_note1, credit_note2],
-    )
-  end
+  subject(:credit_service) { described_class.new(invoice:) }
 
   let(:invoice) do
     create(
       :invoice,
       customer:,
       currency: 'EUR',
-      total_amount_cents: amount_cents,
+      total_amount_cents: amount_cents
     )
   end
 
@@ -28,7 +23,7 @@ RSpec.describe Credits::CreditNoteService do
       total_amount_cents: 20,
       balance_amount_cents: 20,
       credit_amount_cents: 20,
-      customer:,
+      customer:
     )
   end
 
@@ -38,8 +33,13 @@ RSpec.describe Credits::CreditNoteService do
       total_amount_cents: 50,
       balance_amount_cents: 50,
       credit_amount_cents: 50,
-      customer:,
+      customer:
     )
+  end
+
+  before do
+    credit_note1
+    credit_note2
   end
 
   describe '.call' do

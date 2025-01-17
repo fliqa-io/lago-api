@@ -18,8 +18,8 @@ describe 'Aggregation - Weighted Sum Scenarios', :scenarios, type: :request, tra
         {
           external_customer_id: customer.external_id,
           external_id: customer.external_id,
-          plan_code: plan.code,
-        },
+          plan_code: plan.code
+        }
       )
     end
 
@@ -30,9 +30,9 @@ describe 'Aggregation - Weighted Sum Scenarios', :scenarios, type: :request, tra
         {
           code: billable_metric.code,
           transaction_id: SecureRandom.uuid,
-          external_customer_id: customer.external_id,
-          properties: {value: '2500'},
-        },
+          external_subscription_id: subscription.external_id,
+          properties: {value: '2500'}
+        }
       )
 
       fetch_current_usage(customer:)
@@ -45,7 +45,7 @@ describe 'Aggregation - Weighted Sum Scenarios', :scenarios, type: :request, tra
         Subscriptions::BillingService.new.call
         perform_all_enqueued_jobs
       end.to change { subscription.reload.invoices.count }.from(0).to(1)
-        .and change { organization.reload.quantified_events.count }.from(0).to(1)
+        .and change { organization.reload.cached_aggregations.count }.from(0).to(1)
     end
 
     invoice = subscription.invoices.first
@@ -56,17 +56,17 @@ describe 'Aggregation - Weighted Sum Scenarios', :scenarios, type: :request, tra
     expect(fee.units.round).to eq(2177)
     expect(fee.total_aggregated_units).to eq(2500)
 
-    quantified_event = QuantifiedEvent.last
-    expect(quantified_event.properties['total_aggregated_units']).to eq('2500.0')
+    cached_aggregation = CachedAggregation.order(created_at: :desc).first
+    expect(cached_aggregation.current_aggregation).to eq(2500.0)
 
     travel_to(DateTime.new(2023, 4, 4)) do
       create_event(
         {
           code: billable_metric.code,
           transaction_id: SecureRandom.uuid,
-          external_customer_id: customer.external_id,
-          properties: {value: '-2000'},
-        },
+          external_subscription_id: subscription.external_id,
+          properties: {value: '-2000'}
+        }
       )
     end
 
@@ -75,9 +75,9 @@ describe 'Aggregation - Weighted Sum Scenarios', :scenarios, type: :request, tra
         {
           code: billable_metric.code,
           transaction_id: SecureRandom.uuid,
-          external_customer_id: customer.external_id,
-          properties: {value: '-200'},
-        },
+          external_subscription_id: subscription.external_id,
+          properties: {value: '-200'}
+        }
       )
 
       fetch_current_usage(customer:)
@@ -90,7 +90,7 @@ describe 'Aggregation - Weighted Sum Scenarios', :scenarios, type: :request, tra
         Subscriptions::BillingService.new.call
         perform_all_enqueued_jobs
       end.to change { subscription.reload.invoices.count }.from(1).to(2)
-        .and change { organization.reload.quantified_events.count }.from(1).to(2)
+        .and change { organization.reload.cached_aggregations.count }.from(1).to(2)
     end
 
     invoice = subscription.invoices.order(:created_at).last
@@ -101,7 +101,7 @@ describe 'Aggregation - Weighted Sum Scenarios', :scenarios, type: :request, tra
     expect(fee.units.round(5)).to eq(533.33333)
     expect(fee.total_aggregated_units).to eq(300)
 
-    quantified_event = QuantifiedEvent.order(:created_at).last
-    expect(quantified_event.properties['total_aggregated_units']).to eq('300.0')
+    cached_aggregation = CachedAggregation.order(:created_at).last
+    expect(cached_aggregation.current_aggregation).to eq(300.0)
   end
 end

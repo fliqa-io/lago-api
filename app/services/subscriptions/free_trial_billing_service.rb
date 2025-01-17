@@ -17,13 +17,17 @@ module Subscriptions
             [subscription],
             timestamp,
             invoicing_reason: :subscription_starting,
-            skip_charges: true,
+            skip_charges: true
           )
         end
 
         subscription.update!(trial_ended_at: subscription.trial_end_utc_date_from_query)
 
         SendWebhookJob.perform_later('subscription.trial_ended', subscription)
+
+        if subscription.should_sync_hubspot_subscription?
+          Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob.perform_later(subscription:)
+        end
       end
     end
 
@@ -36,12 +40,12 @@ module Subscriptions
     # during the customer trial period
     # Unfortunately, this introduces an N+1 query
     def already_billed_on_day_one?(subscription)
-      Fee.subscription_kind.where(
+      Fee.subscription.where(
         invoice_id: subscription.invoice_subscriptions.select('invoices.id').joins(:invoice).where(
           'invoices.invoice_type' => :subscription,
           'invoices.status' => %i[draft finalized],
-          :timestamp => subscription.started_at.all_day,
-        ),
+          :timestamp => subscription.started_at.all_day
+        )
       ).any?
     end
 

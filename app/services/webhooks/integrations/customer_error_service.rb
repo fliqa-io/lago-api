@@ -15,16 +15,8 @@ module Webhooks
           root_name: object_type,
           provider_error: options[:provider_error],
           provider: options[:provider],
-          provider_code: options[:provider_code],
+          provider_code: options[:provider_code]
         )
-      end
-
-      def webhook_type
-        'customer.accounting_provider_error'
-      end
-
-      def object_type
-        'accounting_provider_customer_error'
       end
     end
   end

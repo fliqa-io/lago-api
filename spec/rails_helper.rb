@@ -6,6 +6,16 @@ require_relative '../config/environment'
 
 require 'spec_helper'
 require 'simplecov'
+require 'money-rails/test_helpers'
+require 'active_storage_validations/matchers'
+
+def pp(*args)
+  # Uncomment the following line if you can't find where you left a `pp` call
+  # ap caller.first
+  args.each do |arg|
+    ap arg, {sort_vars: false, sort_keys: false, indent: -2}
+  end
+end
 
 DatabaseCleaner.allow_remote_database_url = true
 
@@ -49,10 +59,12 @@ RSpec.configure do |config|
   config.include ApiHelper, type: :request
   config.include ScenariosHelper
   config.include LicenseHelper
+  config.include PdfHelper
   config.include ActiveSupport::Testing::TimeHelpers
+  config.include ActiveStorageValidations::Matchers
 
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
-  config.fixture_path = Rails.root.join('spec/fixtures').to_s
+  config.fixture_paths = [Rails.root.join('spec/fixtures').to_s]
 
   # If you're not using ActiveRecord, or you'd prefer not to run each of your
   # examples within a transaction, remove the following line or assign false

@@ -10,7 +10,7 @@ RSpec.describe Types::Organizations::UpdateOrganizationInput do
   it { is_expected.to accept_argument(:legal_name).of_type('String') }
   it { is_expected.to accept_argument(:legal_number).of_type('String') }
   it { is_expected.to accept_argument(:logo).of_type('String') }
-  it { is_expected.to accept_argument(:tax_identification_number).of_type('String').with_permission('organization:taxes:view') }
+  it { is_expected.to accept_argument(:tax_identification_number).of_type('String') }
 
   it { is_expected.to accept_argument(:address_line1).of_type('String') }
   it { is_expected.to accept_argument(:address_line2).of_type('String') }
@@ -29,4 +29,5 @@ RSpec.describe Types::Organizations::UpdateOrganizationInput do
 
   it { is_expected.to accept_argument(:billing_configuration).of_type('OrganizationBillingConfigurationInput').with_permission('organization:invoices:view') }
   it { is_expected.to accept_argument(:email_settings).of_type('[EmailSettingsEnum!]').with_permission('organization:emails:view') }
+  it { is_expected.to accept_argument(:finalize_zero_amount_invoice).of_type('Boolean') }
 end

@@ -7,7 +7,10 @@ module CanRequirePermissions
 
   def ready?(**args)
     if defined? self.class::REQUIRED_PERMISSION
-      has_permission = context.dig(:permissions, self.class::REQUIRED_PERMISSION)
+      permissions_list = Array.wrap(self.class::REQUIRED_PERMISSION)
+      has_permission = permissions_list.any? do |permission|
+        context.dig(:permissions, permission)
+      end
       raise not_enough_permissions_error unless has_permission
     end
 
@@ -18,7 +21,7 @@ module CanRequirePermissions
     extensions = {
       status: :forbidden,
       code: 'forbidden',
-      required_permissions: Array.wrap(self.class::REQUIRED_PERMISSION),
+      required_permissions: Array.wrap(self.class::REQUIRED_PERMISSION)
     }
 
     GraphQL::ExecutionError.new('Missing permissions', extensions:)

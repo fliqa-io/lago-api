@@ -12,7 +12,7 @@ module Integrations
         return unless integration.script_endpoint_url
 
         payload = {
-          restletEndpoint: integration.script_endpoint_url,
+          restletEndpoint: integration.script_endpoint_url
         }
 
         response = http_client.post_with_response(payload, headers)
@@ -25,8 +25,8 @@ module Integrations
 
       def headers
         {
-          'Provider-Config-Key' => 'netsuite',
-          'Authorization' => "Bearer #{secret_key}",
+          'Provider-Config-Key' => 'netsuite-tba',
+          'Authorization' => "Bearer #{secret_key}"
         }
       end
     end

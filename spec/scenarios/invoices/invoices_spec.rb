@@ -5,18 +5,8 @@ require 'rails_helper'
 describe 'Invoices Scenarios', :scenarios, type: :request do
   let(:organization) { create(:organization, webhook_url: nil, email_settings: []) }
   let(:tax) { create(:tax, organization:, rate: 20) }
-  let(:pdf_generator) { instance_double(Utils::PdfGenerator) }
-  let(:pdf_file) { StringIO.new(File.read(Rails.root.join('spec/fixtures/blank.pdf'))) }
-  let(:pdf_result) { OpenStruct.new(io: pdf_file) }
 
-  before do
-    tax
-
-    allow(Utils::PdfGenerator).to receive(:new)
-      .and_return(pdf_generator)
-    allow(pdf_generator).to receive(:call)
-      .and_return(pdf_result)
-  end
+  before { tax }
 
   context 'when pay in advance subscription with free trial used on several subscriptions' do
     let(:organization) { create(:organization, webhook_url: nil) }
@@ -25,27 +15,27 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     let(:plan) { create(:plan, organization:, amount_cents: 3500, pay_in_advance: true, trial_period: 7) }
 
     it 'creates an invoice for the expected period' do
-      travel_to(DateTime.new(2024, 3, 4, 21)) do
+      travel_to(Time.zone.parse('2024-03-04T21:00:00')) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
       end
 
       subscription = customer.subscriptions.first
       expect(subscription.invoices.count).to eq(0)
 
-      travel_to(DateTime.new(2024, 3, 11, 22)) do
+      travel_to(Time.zone.parse('2024-03-11T22:00:00')) do
         perform_billing
       end
 
       invoice = subscription.invoices.first
       expect(invoice.total_amount_cents).to eq(2371) # (31 - 3 - 7) * 35 / 31
 
-      travel_to(DateTime.new(2024, 3, 11, 23)) do
+      travel_to(Time.zone.parse('2024-03-11T23:00:00')) do
         terminate_subscription(subscription)
       end
 
@@ -55,13 +45,13 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       expect(invoice.reload.credit_notes.count).to eq(1)
       expect(invoice.credit_notes.first.total_amount_cents).to eq(2371)
 
-      travel_to(DateTime.new(2024, 3, 11, 23, 5)) do
+      travel_to(Time.zone.parse('2024-03-11T23:05:00')) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
 
         subscription = customer.subscriptions.active.first
@@ -78,13 +68,13 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     let(:plan) { create(:plan, organization:, amount_cents: 700, pay_in_advance: true, interval: 'weekly') }
 
     it 'creates an invoice for the expected period' do
-      travel_to(DateTime.new(2023, 6, 16, 5)) do
+      travel_to(Time.zone.parse('2023-06-16T05:00:00')) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
 
         subscription = customer.subscriptions.first
@@ -101,13 +91,13 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     let(:plan) { create(:plan, organization:, amount_cents: 700, pay_in_advance: true, interval: 'weekly') }
 
     it 'creates an invoice for the expected period' do
-      travel_to(DateTime.new(2023, 6, 16, 5)) do
+      travel_to(Time.zone.parse('2023-06-16T05:00:00')) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
 
         subscription = customer.subscriptions.first
@@ -124,13 +114,13 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     let(:plan) { create(:plan, organization:, amount_cents: 700, pay_in_advance: true, interval: 'weekly') }
 
     it 'creates an invoice for the expected period' do
-      travel_to(DateTime.new(2023, 6, 16, 20)) do
+      travel_to(Time.zone.parse('2023-06-16T20:00:00')) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
 
         subscription = customer.subscriptions.first
@@ -147,13 +137,13 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     let(:plan) { create(:plan, organization:, amount_cents: 700, pay_in_advance: true, interval: 'weekly') }
 
     it 'creates an invoice for the expected period' do
-      travel_to(DateTime.new(2023, 6, 16, 20)) do
+      travel_to(Time.zone.parse('2023-06-16T20:00:00')) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
 
         subscription = customer.subscriptions.first
@@ -170,20 +160,20 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     let(:plan) { create(:plan, organization:, amount_cents: 700, pay_in_advance: true, interval: 'monthly') }
 
     it 'creates an invoice for the expected period' do
-      travel_to(DateTime.new(2023, 6, 16, 5)) do
+      travel_to(Time.zone.parse('2023-06-16T05:00:00')) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            billing_time: 'calendar',
-          },
+            billing_time: 'calendar'
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
-      travel_to(DateTime.new(2024, 2, 1, 12, 12)) do
+      travel_to(Time.zone.parse('2024-02-01T12:12:00')) do
         Subscriptions::BillingService.call
         perform_all_enqueued_jobs
 
@@ -200,6 +190,94 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     end
   end
 
+  context 'when subscription is upgraded without grace period' do
+    let(:customer) { create(:customer, organization:, invoice_grace_period: 0) }
+    let(:plan) { create(:plan, organization:, amount_cents: 0) }
+    let(:plan_new) { create(:plan, organization:, amount_cents: 2000) }
+    let(:metric) { create(:latest_billable_metric, organization:) }
+
+    it 'creates invoices with correctly attached amounts and reasons' do
+      ### 24 Apr: Create subscription + charge.
+      apr24_10 = Time.zone.parse('2024-04-24T10:00:00')
+
+      travel_to(apr24_10) do
+        create(
+          :package_charge,
+          plan: plan_new,
+          billable_metric: metric,
+          pay_in_advance: false,
+          prorated: false,
+          invoiceable: true,
+          properties: {
+            amount: '2',
+            free_units: 1000,
+            package_size: 1000
+          }
+        )
+
+        create_subscription(
+          {
+            external_customer_id: customer.external_id,
+            external_id: customer.external_id,
+            plan_code: plan.code
+          }
+        )
+      end
+
+      subscription = customer.subscriptions.active.first
+
+      ### 24 Apr: Upgrade subscription
+      apr24_11 = Time.zone.parse('2024-04-24T11:00:00')
+
+      travel_to(apr24_11) do
+        expect {
+          create_subscription(
+            {
+              external_customer_id: customer.external_id,
+              external_id: customer.external_id,
+              plan_code: plan_new.code
+            }
+          )
+        }.to change { subscription.reload.status }.from('active').to('terminated')
+          .and change { subscription.invoices.count }.from(0).to(1)
+
+        invoice = subscription.invoices.first
+        invoice_subscription = invoice.invoice_subscriptions.first
+
+        expect(invoice.status).to eq('finalized')
+        expect(invoice.total_amount_cents).to eq(0)
+        expect(invoice_subscription.invoicing_reason).to eq('subscription_terminating')
+        expect(invoice_subscription.from_datetime.iso8601).to eq('2024-04-24T00:00:00Z')
+        expect(invoice_subscription.to_datetime.iso8601).to eq('2024-04-24T11:00:00Z')
+        expect(invoice_subscription.charges_from_datetime.iso8601).to eq('2024-04-24T10:00:00Z')
+        expect(invoice_subscription.charges_to_datetime.iso8601).to eq('2024-04-24T11:00:00Z')
+      end
+
+      latest_subscription = customer.subscriptions.active.order(created_at: :desc).first
+
+      ### 26 Apr: Terminate subscription
+      apr26_11 = Time.zone.parse('2024-04-26T11:00:00')
+
+      travel_to(apr26_11) do
+        expect {
+          terminate_subscription(latest_subscription)
+        }.to change { latest_subscription.reload.status }.from('active').to('terminated')
+          .and change { latest_subscription.invoices.count }.from(0).to(1)
+
+        invoice = latest_subscription.invoices.first
+        invoice_subscription = invoice.invoice_subscriptions.first
+
+        expect(invoice.status).to eq('finalized')
+        expect(invoice.total_amount_cents).to eq(240) # (2000/30) x 3 + tax
+        expect(invoice_subscription.invoicing_reason).to eq('subscription_terminating')
+        expect(invoice_subscription.from_datetime.iso8601).to eq('2024-04-24T00:00:00Z')
+        expect(invoice_subscription.to_datetime.iso8601).to eq('2024-04-26T11:00:00Z')
+        expect(invoice_subscription.charges_from_datetime.iso8601).to eq('2024-04-24T11:00:00Z')
+        expect(invoice_subscription.charges_to_datetime.iso8601).to eq('2024-04-26T11:00:00Z')
+      end
+    end
+  end
+
   context 'when subscription is terminated with a grace period' do
     let(:customer) { create(:customer, organization:, invoice_grace_period: 3) }
     let(:plan) { create(:plan, organization:, amount_cents: 1000) }
@@ -207,15 +285,15 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'does not update the invoice amount on refresh' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
 
         create(:standard_charge, plan:, billable_metric: metric, properties: {amount: '3'})
@@ -224,7 +302,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       subscription = customer.subscriptions.first
 
       ### 20 Dec: Terminate subscription + refresh.
-      dec20 = DateTime.parse('2022-12-20 06:00:00')
+      dec20 = Time.zone.parse('2022-12-20T06:00:00')
 
       travel_to(dec20) do
         expect {
@@ -252,7 +330,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'does bill the charges' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create(
@@ -261,22 +339,22 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: false,
-          properties: {amount: '3'},
+          properties: {amount: '3'}
         )
 
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
       ### 20 Dec: Terminate subscription + refresh.
-      dec20 = DateTime.parse('2022-12-20 06:00:00')
+      dec20 = Time.zone.parse('2022-12-20 06:00:00')
 
       travel_to(dec20) do
         expect {
@@ -285,7 +363,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           .and change { subscription.invoices.count }.from(0).to(1)
 
         invoice = subscription.invoices.first
-        expect(invoice.fees.charge_kind.count).to eq(1)
+        expect(invoice.fees.charge.count).to eq(1)
       end
     end
   end
@@ -299,7 +377,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'does bill the charges' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create(
@@ -308,22 +386,22 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '3'},
+          properties: {amount: '3'}
         )
 
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
       ### 20 Dec: Terminate subscription + refresh.
-      dec20 = DateTime.parse('2022-12-20 06:00:00')
+      dec20 = Time.zone.parse('2022-12-20 06:00:00')
 
       travel_to(dec20) do
         expect {
@@ -332,7 +410,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           .and change { subscription.invoices.count }.from(0).to(1)
 
         invoice = subscription.invoices.first
-        expect(invoice.fees.charge_kind.count).to eq(1)
+        expect(invoice.fees.charge.count).to eq(1)
       end
     end
   end
@@ -343,22 +421,22 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'creates subscription fee and adds it to the invoice' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
       ### 20 Dec: Terminate subscription + refresh.
-      dec20 = DateTime.parse('2022-12-20 06:00:00')
+      dec20 = Time.zone.parse('2022-12-20 06:00:00')
 
       travel_to(dec20) do
         expect {
@@ -367,7 +445,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           .and change { subscription.invoices.count }.from(0).to(1)
 
         invoice = subscription.invoices.first
-        expect(invoice.fees.subscription_kind.count).to eq(1)
+        expect(invoice.fees.subscription.count).to eq(1)
       end
     end
   end
@@ -382,7 +460,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'does bill the charges' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create(
@@ -391,22 +469,22 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: false,
-          properties: {amount: '3'},
+          properties: {amount: '3'}
         )
 
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
       ### 20 Dec: Upgrade subscription
-      dec20 = DateTime.parse('2022-12-20 06:00:00')
+      dec20 = Time.zone.parse('2022-12-20 06:00:00')
 
       travel_to(dec20) do
         expect {
@@ -414,14 +492,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             {
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
-              plan_code: plan_new.code,
-            },
+              plan_code: plan_new.code
+            }
           )
         }.to change { subscription.reload.status }.from('active').to('terminated')
           .and change { subscription.invoices.count }.from(0).to(1)
 
         invoice = subscription.invoices.first
-        expect(invoice.fees.charge_kind.count).to eq(1)
+        expect(invoice.fees.charge.count).to eq(1)
       end
     end
   end
@@ -436,7 +514,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'does not bill the charges' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create(
@@ -445,22 +523,22 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: false,
-          properties: {amount: '3'},
+          properties: {amount: '3'}
         )
 
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
       ### 20 Dec: Upgrade subscription
-      dec20 = DateTime.parse('2022-12-20 06:00:00')
+      dec20 = Time.zone.parse('2022-12-20 06:00:00')
 
       travel_to(dec20) do
         create(
@@ -469,7 +547,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: false,
-          properties: {amount: '3'},
+          properties: {amount: '3'}
         )
 
         expect {
@@ -477,14 +555,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             {
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
-              plan_code: plan_new.code,
-            },
+              plan_code: plan_new.code
+            }
           )
         }.to change { subscription.reload.status }.from('active').to('terminated')
           .and change { subscription.invoices.count }.from(0).to(1)
 
         invoice = subscription.invoices.first
-        expect(invoice.fees.charge_kind.count).to eq(0)
+        expect(invoice.fees.charge.count).to eq(0)
       end
     end
   end
@@ -498,7 +576,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'does not bill the charges' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create(
@@ -507,22 +585,22 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: true,
           prorated: true,
-          properties: {amount: '3'},
+          properties: {amount: '3'}
         )
 
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
       ### 20 Dec: Terminate subscription + refresh.
-      dec20 = DateTime.parse('2022-12-20 06:00:00')
+      dec20 = Time.zone.parse('2022-12-20 06:00:00')
 
       travel_to(dec20) do
         expect {
@@ -531,7 +609,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           .and change { subscription.invoices.count }.from(0).to(1)
 
         invoice = subscription.invoices.first
-        expect(invoice.fees.charge_kind.count).to eq(0)
+        expect(invoice.fees.charge.count).to eq(0)
       end
     end
   end
@@ -546,14 +624,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     end
 
     it 'bills fees correctly' do
-      travel_to(DateTime.new(2024, 1, 1)) do
+      travel_to(Time.zone.parse('2024-01-01T00:00:00')) do
         create(
           :standard_charge,
           plan:,
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create(
@@ -562,7 +640,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create_subscription(
@@ -570,39 +648,38 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            billing_time: 'calendar',
-          },
+            billing_time: 'calendar'
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
-      travel_to(DateTime.new(2024, 1, 2)) do
+      travel_to(Time.zone.parse('2024-01-02T00:00:00')) do
         create_event(
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
-            external_customer_id: customer.external_id,
             external_subscription_id: subscription.external_id,
-            properties: {amount: '5'},
-          },
+            properties: {amount: '5'}
+          }
         )
       end
 
-      travel_to(DateTime.new(2024, 2, 1)) do
+      travel_to(Time.zone.parse('2024-02-01T00:00:00')) do
         Subscriptions::BillingService.call
         perform_all_enqueued_jobs
       end
 
-      travel_to(DateTime.parse('2024-02-12 06:00:00')) do
+      travel_to(Time.zone.parse('2024-02-12T06:00:00')) do
         expect {
           create_subscription(
             {
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
               plan_code: plan_new.code,
-              billing_time: 'calendar',
-            },
+              billing_time: 'calendar'
+            }
           )
           perform_all_enqueued_jobs
         }.to change { subscription.reload.status }.from('active').to('terminated')
@@ -615,7 +692,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
         expect(invoice.total_amount_cents).to eq(18_000 + 190 - 1_800) # 11/29 x 500 = 172
       end
 
-      travel_to(DateTime.new(2024, 3, 1, 12, 12)) do
+      travel_to(Time.zone.parse('2024-03-01T12:12:00')) do
         Subscriptions::BillingService.call
         perform_all_enqueued_jobs
 
@@ -636,14 +713,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     end
 
     it 'bills fees correctly' do
-      travel_to(DateTime.new(2024, 1, 1)) do
+      travel_to(Time.zone.parse('2024-01-01T00:00:00')) do
         create(
           :standard_charge,
           plan:,
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create(
@@ -652,7 +729,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create_subscription(
@@ -660,39 +737,38 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            billing_time: 'calendar',
-          },
+            billing_time: 'calendar'
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
-      travel_to(DateTime.new(2024, 1, 2)) do
+      travel_to(Time.zone.parse('2024-01-02T00:00:00')) do
         create_event(
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
-            external_customer_id: customer.external_id,
             external_subscription_id: subscription.external_id,
-            properties: {amount: '5'},
-          },
+            properties: {amount: '5'}
+          }
         )
       end
 
-      travel_to(DateTime.new(2024, 2, 1)) do
+      travel_to(Time.zone.parse('2024-02-01T00:00:00')) do
         Subscriptions::BillingService.call
         perform_all_enqueued_jobs
       end
 
-      travel_to(DateTime.parse('2024-02-12 06:00:00')) do
+      travel_to(Time.zone.parse('2024-02-12T06:00:00')) do
         expect {
           create_subscription(
             {
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
               plan_code: plan_new.code,
-              billing_time: 'calendar',
-            },
+              billing_time: 'calendar'
+            }
           )
           perform_all_enqueued_jobs
         }.to change { subscription.reload.status }.from('active').to('terminated')
@@ -703,7 +779,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
         expect(terminated_invoice.total_amount_cents).to eq((1_100 + (11.fdiv(29) * 500)).round) # 11 + 10/29 x 5
       end
 
-      travel_to(DateTime.new(2024, 3, 1, 12, 12)) do
+      travel_to(Time.zone.parse('2024-03-01T12:12:00')) do
         Subscriptions::BillingService.call
         perform_all_enqueued_jobs
 
@@ -724,14 +800,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     end
 
     it 'bills fees correctly' do
-      travel_to(DateTime.new(2024, 1, 10, 6, 20)) do
+      travel_to(Time.zone.parse('2024-01-10T06:20:00')) do
         create(
           :standard_charge,
           plan:,
           billable_metric: metric,
           pay_in_advance: false,
           prorated: false,
-          properties: {amount: '0'},
+          properties: {amount: '0'}
         )
 
         create(
@@ -740,7 +816,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: false,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create_subscription(
@@ -748,22 +824,21 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            billing_time: 'anniversary',
-          },
+            billing_time: 'anniversary'
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
-      travel_to(DateTime.new(2024, 1, 10, 8, 20)) do
+      travel_to(Time.zone.parse('2024-01-10T08:20:00')) do
         create_event(
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
-            external_customer_id: customer.external_id,
             external_subscription_id: subscription.external_id,
-            properties: {amount: '10'},
-          },
+            properties: {amount: '10'}
+          }
         )
 
         fetch_current_usage(customer:, subscription:)
@@ -772,15 +847,15 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
         expect(json[:customer_usage][:charges_usage][0][:units]).to eq('10.0')
       end
 
-      travel_to(DateTime.new(2024, 1, 10, 8, 30)) do
+      travel_to(Time.zone.parse('2024-01-10T08:30:00')) do
         expect {
           create_subscription(
             {
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
               plan_code: plan_new.code,
-              billing_time: 'anniversary',
-            },
+              billing_time: 'anniversary'
+            }
           )
           perform_all_enqueued_jobs
         }.to change { subscription.reload.status }.from('active').to('terminated')
@@ -799,15 +874,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
       active_subscription = customer.subscriptions.active.first
 
-      travel_to(DateTime.new(2024, 1, 10, 8, 35)) do
+      travel_to(Time.zone.parse('2024-01-10T08:35:00')) do
         create_event(
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
-            external_customer_id: customer.external_id,
             external_subscription_id: active_subscription.external_id,
-            properties: {amount: '10000'},
-          },
+            properties: {amount: '10000'}
+          }
         )
 
         fetch_current_usage(customer:, subscription:)
@@ -816,15 +890,15 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
         expect(json[:customer_usage][:charges_usage][0][:units]).to eq('10000.0')
       end
 
-      travel_to(DateTime.new(2024, 1, 10, 8, 40)) do
+      travel_to(Time.zone.parse('2024-01-10T08:40:00')) do
         expect {
           create_subscription(
             {
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
               plan_code: plan.code,
-              billing_time: 'anniversary',
-            },
+              billing_time: 'anniversary'
+            }
           )
           perform_all_enqueued_jobs
         }.to change { active_subscription.reload.status }.from('active').to('terminated')
@@ -853,14 +927,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     end
 
     it 'bills fees correctly' do
-      travel_to(DateTime.new(2024, 1, 1)) do
+      travel_to(Time.zone.parse('2024-01-01T00:00:00')) do
         create(
           :standard_charge,
           plan:,
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create(
@@ -869,7 +943,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create_subscription(
@@ -877,31 +951,30 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            billing_time: 'calendar',
-          },
+            billing_time: 'calendar'
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
-      travel_to(DateTime.new(2024, 1, 2)) do
+      travel_to(Time.zone.parse('2024-01-02T00:00:00')) do
         create_event(
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
-            external_customer_id: customer.external_id,
             external_subscription_id: subscription.external_id,
-            properties: {amount: '5'},
-          },
+            properties: {amount: '5'}
+          }
         )
       end
 
-      travel_to(DateTime.new(2024, 2, 1)) do
+      travel_to(Time.zone.parse('2024-02-01T00:00:00')) do
         Subscriptions::BillingService.call
         perform_all_enqueued_jobs
       end
 
-      travel_to(DateTime.parse('2024-02-12 06:00:00')) do
+      travel_to(Time.zone.parse('2024-02-12T06:00:00')) do
         expect {
           terminate_subscription(subscription)
           perform_all_enqueued_jobs
@@ -926,21 +999,21 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     let(:metric) { create(:billable_metric, organization:) }
 
     it 'bills fees correctly' do
-      travel_to(DateTime.parse('2024-02-01 03:00:00')) do
+      travel_to(Time.zone.parse('2024-02-01T03:00:00')) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            billing_time: 'calendar',
-          },
+            billing_time: 'calendar'
+          }
         )
       end
 
       subscription = customer.subscriptions.first
       first_invoice = subscription.invoices.first
 
-      travel_to(DateTime.parse('2024-02-01 18:00:00')) do
+      travel_to(Time.zone.parse('2024-02-01T18:00:00')) do
         expect {
           terminate_subscription(subscription)
           perform_all_enqueued_jobs
@@ -960,31 +1033,31 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       it 'bills the usage correctly' do
         create(:standard_charge, plan:, billable_metric: metric, properties: {amount: '12'})
 
-        travel_to(DateTime.parse('2024-02-01 03:00:00')) do
+        travel_to(Time.zone.parse('2024-02-01 03:00:00')) do
           create_subscription(
             {
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
               plan_code: plan.code,
-              billing_time: 'calendar',
-            },
+              billing_time: 'calendar'
+            }
           )
         end
         subscription = customer.subscriptions.first
         first_invoice = subscription.invoices.first
 
-        travel_to(DateTime.parse('2024-02-01 10:00:00')) do
+        travel_to(Time.zone.parse('2024-02-01 10:00:00')) do
           create_event(
             {
               code: metric.code,
               transaction_id: SecureRandom.uuid,
               organization_id: organization.id,
-              external_customer_id: customer.external_id,
-            },
+              external_subscription_id: subscription.external_id
+            }
           )
         end
 
-        travel_to(DateTime.parse('2024-02-01 18:00:00')) do
+        travel_to(Time.zone.parse('2024-02-01 18:00:00')) do
           expect {
             terminate_subscription(subscription)
             perform_all_enqueued_jobs
@@ -1011,22 +1084,22 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     end
     let(:adjusted_fee_params) do
       {
-        unit_amount_cents: 500,
-        units: 3,
+        unit_precise_amount: '5.00',
+        units: 3
       }
     end
 
     around { |test| lago_premium!(&test) }
 
     it 'bills fees correctly' do
-      travel_to(DateTime.new(2024, 1, 1)) do
+      travel_to(Time.zone.parse('2024-01-01T00:00:00')) do
         create(
           :standard_charge,
           plan:,
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create_subscription(
@@ -1034,8 +1107,8 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            billing_time: 'calendar',
-          },
+            billing_time: 'calendar'
+          }
         )
       end
 
@@ -1044,26 +1117,25 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
       finalize_invoice(first_invoice)
 
-      travel_to(DateTime.new(2024, 1, 2)) do
+      travel_to(Time.zone.parse('2024-01-02T00:00:00')) do
         create_event(
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
-            external_customer_id: customer.external_id,
             external_subscription_id: subscription.external_id,
-            properties: {amount: '5'},
-          },
+            properties: {amount: '5'}
+          }
         )
       end
 
-      travel_to(DateTime.new(2024, 2, 1)) do
+      travel_to(Time.zone.parse('2024-02-01T00:00:00')) do
         Subscriptions::BillingService.call
         perform_all_enqueued_jobs
 
         finalize_invoice(subscription.invoices.order(created_at: :desc).first)
       end
 
-      travel_to(DateTime.parse('2024-02-12 06:00:00')) do
+      travel_to(Time.zone.parse('2024-02-12T06:00:00')) do
         expect {
           terminate_subscription(subscription)
           perform_all_enqueued_jobs
@@ -1081,7 +1153,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
         expect(terminated_invoice.credit_notes_amount_cents).to eq(0)
 
         # In terminated invoice there is only one fee that is charge kind
-        fee = terminated_invoice.fees.charge_kind.first
+        fee = terminated_invoice.fees.charge.first
 
         AdjustedFees::CreateService.call(organization:, fee:, params: adjusted_fee_params)
         credit_note = credit_note.reload
@@ -1109,20 +1181,20 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     context 'with updated fee with attached credit note' do
       let(:adjusted_fee_params) do
         {
-          unit_amount_cents: 50,
-          units: 18, # 50 x 18 = 900
+          unit_precise_amount: '0.50',
+          units: 18 # 50 x 18 = 900
         }
       end
 
       it 'bills fees correctly' do
-        travel_to(DateTime.parse('2024-02-12 06:00:00')) do
+        travel_to(Time.zone.parse('2024-02-12T06:00:00')) do
           create(
             :standard_charge,
             plan:,
             billable_metric: metric,
             pay_in_advance: false,
             prorated: true,
-            properties: {amount: '1'},
+            properties: {amount: '1'}
           )
 
           create_subscription(
@@ -1130,8 +1202,8 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
               plan_code: plan.code,
-              billing_time: 'calendar',
-            },
+              billing_time: 'calendar'
+            }
           )
         end
 
@@ -1143,7 +1215,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
         subscription = customer.subscriptions.first
 
-        travel_to(DateTime.parse('2024-02-12 21:00:00')) do
+        travel_to(Time.zone.parse('2024-02-12T21:00:00')) do
           expect {
             terminate_subscription(subscription)
             perform_all_enqueued_jobs
@@ -1162,7 +1234,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           expect(first_invoice.credit_notes_amount_cents).to eq(0)
 
           # There is only one fee that is subscription kind
-          fee = first_invoice.fees.subscription_kind.first
+          fee = first_invoice.fees.subscription.first
 
           AdjustedFees::CreateService.call(organization:, fee:, params: adjusted_fee_params)
           credit_note = credit_note.reload
@@ -1190,20 +1262,20 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     context 'with updated fee equal to zero' do
       let(:adjusted_fee_params) do
         {
-          unit_amount_cents: 0,
-          units: 1,
+          unit_precise_amount: 0,
+          units: 1
         }
       end
 
       it 'bills fees correctly' do
-        travel_to(DateTime.parse('2024-02-12 06:00:00')) do
+        travel_to(Time.zone.parse('2024-02-12 06:00:00')) do
           create(
             :standard_charge,
             plan:,
             billable_metric: metric,
             pay_in_advance: false,
             prorated: true,
-            properties: {amount: '1'},
+            properties: {amount: '1'}
           )
 
           create_subscription(
@@ -1211,8 +1283,8 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
               plan_code: plan.code,
-              billing_time: 'calendar',
-            },
+              billing_time: 'calendar'
+            }
           )
         end
 
@@ -1224,7 +1296,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
         subscription = customer.subscriptions.first
 
-        travel_to(DateTime.parse('2024-02-12 21:00:00')) do
+        travel_to(Time.zone.parse('2024-02-12T21:00:00')) do
           expect {
             terminate_subscription(subscription)
             perform_all_enqueued_jobs
@@ -1243,7 +1315,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           expect(first_invoice.credit_notes_amount_cents).to eq(0)
 
           # There is only one fee that is subscription kind
-          fee = first_invoice.fees.subscription_kind.first
+          fee = first_invoice.fees.subscription.first
 
           AdjustedFees::CreateService.call(organization:, fee:, params: adjusted_fee_params)
           credit_note = credit_note.reload
@@ -1279,14 +1351,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     end
 
     it 'bills fees correctly' do
-      travel_to(DateTime.new(2024, 1, 1)) do
+      travel_to(Time.zone.parse('2024-01-01T00:00:00')) do
         create(
           :standard_charge,
           plan:,
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create(
@@ -1295,7 +1367,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           billable_metric: metric,
           pay_in_advance: false,
           prorated: true,
-          properties: {amount: '1'},
+          properties: {amount: '1'}
         )
 
         create_subscription(
@@ -1303,26 +1375,25 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            billing_time: 'calendar',
-          },
+            billing_time: 'calendar'
+          }
         )
       end
 
       subscription = customer.subscriptions.first
 
-      travel_to(DateTime.new(2024, 1, 2)) do
+      travel_to(Time.zone.parse('2024-01-02T00:00:00')) do
         create_event(
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
-            external_customer_id: customer.external_id,
             external_subscription_id: subscription.external_id,
-            properties: {amount: '5'},
-          },
+            properties: {amount: '5'}
+          }
         )
       end
 
-      travel_to(DateTime.parse('2024-02-12 06:00:00')) do
+      travel_to(Time.zone.parse('2024-02-12T06:00:00')) do
         expect {
           terminate_subscription(subscription)
           perform_all_enqueued_jobs
@@ -1343,15 +1414,15 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'terminates the pay in advance subscription with credit note lesser than amount' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
 
         create(:standard_charge, plan:, billable_metric: metric, properties: {amount: '3'})
@@ -1362,18 +1433,18 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       expect(subscription_invoice.total_amount_cents).to eq(658) # 17 days - From 15th Dec. to 31st Dec.
 
       ### 17 Dec: Create event + refresh.
-      travel_to(DateTime.new(2022, 12, 17)) do
+      travel_to(Time.zone.parse('2022-12-17')) do
         create(
           :event,
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          code: metric.code,
+          code: metric.code
         )
         create(
           :event,
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          code: metric.code,
+          code: metric.code
         )
 
         expect {
@@ -1382,7 +1453,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       end
 
       ### 20 Dec: Terminate subscription + refresh.
-      dec20 = DateTime.new(2022, 12, 20)
+      dec20 = Time.zone.parse('2022-12-20')
 
       travel_to(dec20) do
         expect {
@@ -1437,7 +1508,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'terminates the pay in advance subscription with credit note greater than amount' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create_subscription(
@@ -1445,8 +1516,8 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            customer:,
-          },
+            customer:
+          }
         )
 
         create(:standard_charge, plan:, billable_metric: metric, properties: {amount: '1'})
@@ -1457,12 +1528,12 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       expect(subscription_invoice.total_amount_cents).to eq(658) # 17 days - From 15th Dec. to 31st Dec.
 
       ### 17 Dec: Create event + refresh.
-      travel_to(DateTime.new(2022, 12, 17)) do
+      travel_to(Time.zone.parse('2022-12-17')) do
         create(
           :event,
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          code: metric.code,
+          code: metric.code
         )
 
         expect {
@@ -1471,7 +1542,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       end
 
       ### 20 Dec: Terminate subscription + refresh.
-      dec20 = DateTime.new(2022, 12, 20)
+      dec20 = Time.zone.parse('2022-12-20')
 
       travel_to(dec20) do
         expect {
@@ -1524,7 +1595,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
     it 'refreshes and finalizes invoices' do
       ### 15 Dec: Create subscription + charge.
-      dec15 = DateTime.new(2022, 12, 15)
+      dec15 = Time.zone.parse('2022-12-15')
 
       travel_to(dec15) do
         create(:standard_charge, plan:, billable_metric: metric, properties: {amount: '1'})
@@ -1533,8 +1604,8 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            customer:,
-          },
+            customer:
+          }
         )
       end
 
@@ -1543,14 +1614,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       expect(invoice.total_amount_cents).to eq(658) # 17 days - From 15th Dec. to 31st Dec.
 
       ### 16 Dec: Create event + refresh.
-      travel_to(DateTime.new(2022, 12, 16)) do
+      travel_to(Time.zone.parse('2022-12-16')) do
         create_event(
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
             organization_id: organization.id,
-            external_subscription_id: subscription.external_id,
-          },
+            external_subscription_id: subscription.external_id
+          }
         )
 
         # Paid in advance invoice amount does not change.
@@ -1560,14 +1631,14 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       end
 
       ### 17 Dec: Create event + refresh.
-      travel_to(DateTime.new(2022, 12, 17)) do
+      travel_to(Time.zone.parse('2022-12-17')) do
         create_event(
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
             organization_id: organization.id,
-            external_subscription_id: subscription.external_id,
-          },
+            external_subscription_id: subscription.external_id
+          }
         )
 
         # Paid in advance invoice amount does not change.
@@ -1577,7 +1648,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
       end
 
       ### 1 Jan: Billing + refresh + finalize.
-      travel_to(DateTime.new(2023, 1, 1)) do
+      travel_to(Time.zone.parse('2023-01-01')) do
         perform_billing
 
         expect(subscription.invoices.count).to eq(2)
@@ -1589,10 +1660,10 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           {
             code: metric.code,
             transaction_id: SecureRandom.uuid,
-            timestamp: DateTime.parse('2022-12-18').to_i,
+            timestamp: Time.zone.parse('2022-12-18').to_i,
             organization_id: organization.id,
-            external_subscription_id: subscription.external_id,
-          },
+            external_subscription_id: subscription.external_id
+          }
         )
 
         # Paid in advance invoice amount does not change.
@@ -1628,8 +1699,8 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: pay_in_arrear_plan.code,
-          },
+            plan_code: pay_in_arrear_plan.code
+          }
         )
 
         create(:standard_charge, plan:, billable_metric: metric, properties: {amount: '1'})
@@ -1639,8 +1710,8 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: pay_in_advance_plan.code,
-          },
+            plan_code: pay_in_advance_plan.code
+          }
         )
 
         expect(customer.invoices.draft.count).to eq(1)
@@ -1658,26 +1729,16 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
     context 'when invoice grace period is removed' do
       let(:organization) { create(:organization, webhook_url: nil, invoice_grace_period: 3) }
       let(:plan) { create(:plan, pay_in_advance: true, organization:, amount_cents: 1000) }
-      let(:pdf_generator) { instance_double(Utils::PdfGenerator) }
-      let(:pdf_file) { StringIO.new(File.read(Rails.root.join('spec/fixtures/blank.pdf'))) }
-      let(:pdf_result) { OpenStruct.new(io: pdf_file) }
 
       around { |test| lago_premium!(&test) }
-
-      before do
-        allow(Utils::PdfGenerator).to receive(:new)
-          .and_return(pdf_generator)
-        allow(pdf_generator).to receive(:call)
-          .and_return(pdf_result)
-      end
 
       it 'finalizes draft invoices' do
         create_subscription(
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
 
         create(:standard_charge, plan:, billable_metric: metric, properties: {amount: '1'})
@@ -1686,7 +1747,7 @@ describe 'Invoices Scenarios', :scenarios, type: :request do
 
         params = {
           external_id: customer.external_id,
-          billing_configuration: {invoice_grace_period: 0},
+          billing_configuration: {invoice_grace_period: 0}
         }
 
         expect {

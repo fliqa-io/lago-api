@@ -16,10 +16,14 @@ module Subscriptions
         .where(
           "DATE(subscriptions.subscription_at#{at_time_zone}) <= " \
           "DATE(?#{at_time_zone})",
-          Time.zone.at(timestamp),
+          Time.zone.at(timestamp)
         )
         .find_each do |subscription|
           subscription.mark_as_active!(Time.zone.at(timestamp))
+
+          if subscription.should_sync_hubspot_subscription?
+            Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob.perform_later(subscription:)
+          end
 
           SendWebhookJob.perform_later('subscription.started', subscription)
 

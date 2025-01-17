@@ -39,14 +39,14 @@ module Types
         return @should_use_in_advance_charges_interval if defined? @should_use_in_advance_charges_interval
 
         @should_use_in_advance_charges_interval =
-          object.fees.charge_kind.any? &&
+          object.fees.charge.any? &&
           object.subscription.plan.charges.where(pay_in_advance: true).any? &&
           !object.subscription.plan.pay_in_advance?
       end
 
       def charge_pay_in_advance_interval
         @charge_pay_in_advance_interval ||=
-          object.invoice.charge_pay_in_advance_interval(object.timestamp, object.subscription)
+          ::Subscriptions::DatesService.charge_pay_in_advance_interval(object.timestamp, object.subscription)
       end
     end
   end

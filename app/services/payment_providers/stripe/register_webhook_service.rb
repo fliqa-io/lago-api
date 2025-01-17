@@ -7,14 +7,14 @@ module PaymentProviders
         stripe_webhook = ::Stripe::WebhookEndpoint.create(
           {
             url: webhook_end_point,
-            enabled_events: PaymentProviders::StripeProvider::WEBHOOKS_EVENTS,
+            enabled_events: PaymentProviders::StripeProvider::WEBHOOKS_EVENTS
           },
-          {api_key:},
+          {api_key:}
         )
 
         payment_provider.update!(
           webhook_id: stripe_webhook.id,
-          webhook_secret: stripe_webhook.secret,
+          webhook_secret: stripe_webhook.secret
         )
 
         result.payment_provider = payment_provider
@@ -22,6 +22,11 @@ module PaymentProviders
       rescue ActiveRecord::RecordInvalid => e
         result.record_validation_failure!(record: e.record)
       rescue ::Stripe::AuthenticationError => e
+        deliver_error_webhook(action: 'payment_provider.register_webhook', error: e)
+        result
+      rescue ::Stripe::InvalidRequestError => e
+        raise if e.message != "You have reached the maximum of 16 test webhook endpoints."
+
         deliver_error_webhook(action: 'payment_provider.register_webhook', error: e)
         result
       end

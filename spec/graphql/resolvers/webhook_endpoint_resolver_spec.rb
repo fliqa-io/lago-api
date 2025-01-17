@@ -37,8 +37,8 @@ RSpec.describe Resolvers::WebhookEndpointResolver, type: :graphql do
       permissions: required_permission,
       query:,
       variables: {
-        webhookEndpointId: webhook_endpoint.id,
-      },
+        webhookEndpointId: webhook_endpoint.id
+      }
     )
 
     webhook_endpoint_response = result['data']['webhookEndpoint']

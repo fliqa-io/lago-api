@@ -25,13 +25,12 @@ module Integrations
         integration.sync_credit_notes = params[:sync_credit_notes] if params.key?(:sync_credit_notes)
         integration.sync_invoices = params[:sync_invoices] if params.key?(:sync_invoices)
         integration.sync_payments = params[:sync_payments] if params.key?(:sync_payments)
-        integration.sync_sales_orders = params[:sync_sales_orders] if params.key?(:sync_sales_orders)
 
         integration.save!
 
         if integration.type == 'Integrations::NetsuiteIntegration' && integration.script_endpoint_url != old_script_url
           Integrations::Aggregator::SendRestletEndpointJob.perform_later(integration:)
-          Integrations::Aggregator::PerformSyncJob.set(wait: 2.seconds).perform_later(integration:)
+          Integrations::Aggregator::PerformSyncJob.set(wait: 2.seconds).perform_later(integration:, sync_items: false)
         end
 
         result.integration = integration

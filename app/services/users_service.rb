@@ -17,8 +17,8 @@ class UsersService < BaseService
   end
 
   def register(email, password, organization_name)
-    if ENV.fetch('LAGO_SIGNUP_DISABLED', 'false') == 'true'
-      return result.not_allowed_failure!(code: 'signup disabled')
+    if ENV.fetch('LAGO_DISABLE_SIGNUP', 'false') == 'true'
+      return result.not_allowed_failure!(code: 'signup_disabled')
     end
 
     if User.exists?(email:)
@@ -29,12 +29,16 @@ class UsersService < BaseService
 
     ActiveRecord::Base.transaction do
       result.user = User.create!(email:, password:)
-      result.organization = Organization.create!(name: organization_name, document_numbering: 'per_organization')
+
+      result.organization = Organizations::CreateService
+        .call(name: organization_name, document_numbering: 'per_organization')
+        .raise_if_error!
+        .organization
 
       result.membership = Membership.create!(
         user: result.user,
         organization: result.organization,
-        role: :admin,
+        role: :admin
       )
 
       result.token = generate_token
@@ -56,7 +60,7 @@ class UsersService < BaseService
       result.membership = Membership.create!(
         user: result.user,
         organization: result.organization,
-        role: invite.role,
+        role: invite.role
       )
 
       result.token = generate_token
@@ -84,7 +88,7 @@ class UsersService < BaseService
   def payload
     {
       sub: result.user.id,
-      exp: Time.now.to_i + 8640, # 6 hours expiration
+      exp: Time.now.to_i + 8640 # 6 hours expiration
     }
   end
 
@@ -94,8 +98,8 @@ class UsersService < BaseService
       event: 'organization_registered',
       properties: {
         organization_name: organization.name,
-        organization_id: organization.id,
-      },
+        organization_id: organization.id
+      }
     )
   end
 end

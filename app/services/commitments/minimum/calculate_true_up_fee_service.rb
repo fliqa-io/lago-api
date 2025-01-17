@@ -22,6 +22,7 @@ module Commitments
 
       def call
         result.amount_cents = amount_cents
+        result.precise_amount_cents = precise_amount_cents
         result
       end
 
@@ -37,6 +38,12 @@ module Commitments
         commitment_amount_cents - fees_total_amount_cents
       end
 
+      def precise_amount_cents
+        return 0.to_d if !minimum_commitment || fees_total_precise_amount_cents >= commitment_amount_cents
+
+        commitment_amount_cents - fees_total_precise_amount_cents
+      end
+
       def fees_total_amount_cents
         subscription_fees.sum(:amount_cents) +
           charge_fees.sum(:amount_cents) +
@@ -44,10 +51,17 @@ module Commitments
           charge_in_advance_recurring_fees.sum(:amount_cents)
       end
 
+      def fees_total_precise_amount_cents
+        subscription_fees.sum(:precise_amount_cents) +
+          charge_fees.sum(:precise_amount_cents) +
+          charge_in_advance_fees.sum(:precise_amount_cents) +
+          charge_in_advance_recurring_fees.sum(:precise_amount_cents)
+      end
+
       def commitment_amount_cents
         result = Commitments::CalculateAmountService.call(
           commitment: minimum_commitment,
-          invoice_subscription:,
+          invoice_subscription:
         )
 
         result.commitment_amount_cents

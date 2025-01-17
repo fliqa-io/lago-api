@@ -8,6 +8,7 @@ RSpec.describe Mutations::Subscriptions::Create, type: :graphql do
   let(:organization) { membership.organization }
   let(:plan) { create(:plan, organization:) }
   let(:charge) { create(:standard_charge, plan:) }
+  let(:threshold) { create(:usage_threshold, plan:) }
   let(:ending_at) { Time.current.beginning_of_day + 1.year }
   let(:customer) { create(:customer, organization:) }
   let(:mutation) do
@@ -28,6 +29,10 @@ RSpec.describe Mutations::Subscriptions::Create, type: :graphql do
           plan {
             id
             amountCents
+            usageThresholds {
+              amountCents
+              thresholdDisplayName
+            }
           }
         }
       }
@@ -35,6 +40,8 @@ RSpec.describe Mutations::Subscriptions::Create, type: :graphql do
   end
 
   around { |test| lago_premium!(&test) }
+
+  before { organization.update!(premium_integrations: ['progressive_billing']) }
 
   it_behaves_like 'requires current user'
   it_behaves_like 'requires current organization'
@@ -59,11 +66,15 @@ RSpec.describe Mutations::Subscriptions::Create, type: :graphql do
             charges: [
               id: charge.id,
               billableMetricId: charge.billable_metric_id,
-              invoiceDisplayName: 'invoice display name',
+              invoiceDisplayName: 'invoice display name'
             ],
-          },
-        },
-      },
+            usageThresholds: [
+              amountCents: 100,
+              thresholdDisplayName: 'threshold display name'
+            ]
+          }
+        }
+      }
     )
 
     result_data = result['data']['createSubscription']
@@ -75,14 +86,18 @@ RSpec.describe Mutations::Subscriptions::Create, type: :graphql do
       'externalId' => 'custom-external-id',
       'startedAt' => String,
       'billingTime' => 'anniversary',
-      'endingAt' => ending_at.iso8601,
+      'endingAt' => ending_at.iso8601
     )
     expect(result_data['customer']).to include(
-      'id' => customer.id,
+      'id' => customer.id
     )
     expect(result_data['plan']).to include(
       'id' => String,
-      'amountCents' => '100',
+      'amountCents' => '100'
+    )
+    expect(result_data['plan']['usageThresholds'].first).to include(
+      'thresholdDisplayName' => 'threshold display name',
+      'amountCents' => '100'
     )
   end
 end

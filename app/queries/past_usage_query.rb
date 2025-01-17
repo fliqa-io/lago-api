@@ -5,20 +5,22 @@ class PastUsageQuery < BaseQuery
     validate_filters
     return result if result.error.present?
 
-    query_result = query
+    query_result = apply_consistent_ordering(query)
     result.usage_periods = query_result.map do |invoice_subscription|
       OpenStruct.new(
         invoice_subscription:,
-        fees: fees_query(invoice_subscription.invoice),
+        fees: fees_query(invoice_subscription.invoice)
       )
     end
 
     # NOTE: Pagination attributes
-    result.current_page = query_result.current_page
-    result.next_page = query_result.next_page
-    result.prev_page = query_result.prev_page
-    result.total_pages = query_result.total_pages
-    result.total_count = query_result.total_count
+    if pagination
+      result.current_page = query_result.current_page
+      result.next_page = query_result.next_page
+      result.prev_page = query_result.prev_page
+      result.total_pages = query_result.total_pages
+      result.total_count = query_result.total_count
+    end
 
     result
   end
@@ -39,7 +41,7 @@ class PastUsageQuery < BaseQuery
   end
 
   def fees_query(invoice)
-    query = invoice.fees.charge.includes(:charge_filter, :group)
+    query = invoice.fees.joins(:subscription).where(subscription: {external_id: filters.external_subscription_id}).charge.includes(:charge_filter)
     return query unless filters.billable_metric_code
 
     query.joins(:charge).where(charges: {billable_metric_id: billable_metric.id})
@@ -49,14 +51,14 @@ class PastUsageQuery < BaseQuery
     if filters.external_customer_id.blank?
       return result.single_validation_failure!(
         field: :external_customer_id,
-        error_code: 'value_is_mandatory',
+        error_code: 'value_is_mandatory'
       )
     end
 
     if filters.external_subscription_id.blank?
       return result.single_validation_failure!(
         field: :external_subscription_id,
-        error_code: 'value_is_mandatory',
+        error_code: 'value_is_mandatory'
       )
     end
 

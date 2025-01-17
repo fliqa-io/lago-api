@@ -3,6 +3,7 @@ fr:
   invoice:
     all_subscriptions: Tous les abonnements
     all_usage_based_fees: Tous les frais de consommation
+    already_paid: Déjà payé
     amount: Montant
     amount_with_tax: Montant (TTC)
     amount_without_tax: Montant (HT)
@@ -17,6 +18,7 @@ fr:
     date_to: au
     details: Détails de %{resource}
     document_name: Facture
+    document_tax_name: Facture fiscale
     due_date: Date d'échéance le %{date}
     fee_prorated: Les frais sont calculés au prorata des jours d'utilisation, le prix unitaire affiché est une moyenne
     fees_from_to_date: Frais de conso. du %{from_date} au %{to_date}
@@ -39,6 +41,8 @@ fr:
       fee_per_package: Frais par tranche
       fee_per_package_unit_price: "%{amount} par tranche de %{package_size}"
       free_units_for_the_first: Unités gratuites pour les premiers %{count}
+    paid_invoice: Facture payée
+    paid_tax_invoice: Facture fiscale payée
     payment_term: Délai de paiement
     payment_term_days: "%{net_payment_term} jours"
     percentage:
@@ -52,8 +56,10 @@ fr:
     prepaid_credit_invoice: Facture d'acompte
     prepaid_credits: Crédit(s) prépayé(s)
     prepaid_credits_with_value: Crédit(s) prépayé(s) - %{wallet_name}
+    progressive_billing_credit: Usage déjà facturé
     quarter: trimestre
     quarterly: trimestriellement
+    reached_usage_threshold: Cette facturation progressive est générée car votre usage cumulé a atteint %{usage_amount}, dépassant le seuil de %{threshold_amount}.
     see_breakdown: Consultez le détail ci-après
     sub_total: Sous total
     sub_total_with_tax: Sous total (TTC)
@@ -63,6 +69,14 @@ fr:
     tax: TVA
     tax_identification_number: 'ID fiscal: %{tax_identification_number}'
     tax_name: "%{name} (%{rate}% sur %{amount})"
+    tax_name_only:
+      customer_exempt: Le client est exonéré de taxe
+      juris_has_no_tax: Taxe non applicable
+      juris_not_taxed: Taxe non applicable
+      not_collecting: Pas de taxe
+      reverse_charge: Autoliquidation - Responsabilité fiscale transférée au client
+      transaction_exempt: Le client est exonéré de taxe
+      unknown_taxation: Inconnu
     tax_name_with_details: "%{name} (%{rate}%)"
     tax_rate: Taux de taxe
     taxes:

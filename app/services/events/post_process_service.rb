@@ -11,6 +11,10 @@ module Events
     def call
       event.external_customer_id ||= customer&.external_id
 
+      unless event.external_subscription_id
+        Deprecation.report('event_missing_external_subscription_id', organization.id)
+      end
+
       # NOTE: prevent subscription if more than 1 subscription is active
       #       if multiple terminated matches the timestamp, takes the most recent
       if !event.external_subscription_id && subscriptions.count(&:active?) <= 1
@@ -20,17 +24,19 @@ module Events
       event.save!
 
       expire_cached_charges(subscriptions)
+      flag_refresh_from_subscription
+      customer&.flag_wallets_for_refresh
 
       handle_pay_in_advance
 
       result.event = event
       result
     rescue ActiveRecord::RecordInvalid => e
-      delivor_error_webhook(error: e.record.errors.messages)
+      deliver_error_webhook(error: e.record.errors.messages)
 
       result
     rescue ActiveRecord::RecordNotUnique
-      delivor_error_webhook(error: {transaction_id: ['value_already_exist']})
+      deliver_error_webhook(error: {transaction_id: ['value_already_exist']})
 
       result
     end
@@ -44,11 +50,7 @@ module Events
     def customer
       return @customer if defined? @customer
 
-      @customer = if event.external_subscription_id
-        organization.subscriptions.find_by(external_id: event.external_subscription_id)&.customer
-      else
-        Customer.find_by(external_id: event.external_customer_id, organization_id: organization.id)
-      end
+      @customer = organization.subscriptions.find_by(external_id: event.external_subscription_id)&.customer
     end
 
     def subscriptions
@@ -62,10 +64,10 @@ module Events
       return unless subscriptions
 
       @subscriptions = subscriptions
-        .where("date_trunc('second', started_at::timestamp) <= ?::timestamp", event.timestamp)
+        .where("date_trunc('millisecond', started_at::timestamp) <= ?::timestamp", event.timestamp)
         .where(
-          "terminated_at IS NULL OR date_trunc('second', terminated_at::timestamp) >= ?",
-          event.timestamp,
+          "terminated_at IS NULL OR date_trunc('millisecond', terminated_at::timestamp) >= ?",
+          event.timestamp
         )
         .order('terminated_at DESC NULLS FIRST, started_at DESC')
     end
@@ -82,30 +84,26 @@ module Events
       charges = billable_metric.charges
         .joins(:plan)
         .where(plans: {id: active_subscription.map(&:plan_id)})
+        .includes(filters: {values: :billable_metric_filter})
 
       charges.each do |charge|
+        charge_filter = ChargeFilters::EventMatchingService.call(charge:, event:).charge_filter
+
         active_subscription.each do |subscription|
-          Subscriptions::ChargeCacheService.new(subscription:, charge:).expire_cache
+          Subscriptions::ChargeCacheService.expire_cache(subscription:, charge:, charge_filter:)
         end
       end
     end
 
+    def flag_refresh_from_subscription
+      subscriptions.select(&:active?).each { |s| LifetimeUsages::FlagRefreshFromSubscriptionService.new(subscription: s).call }
+    end
+
     def handle_pay_in_advance
       return unless billable_metric
+      return unless charges.any?
 
-      charges.where(invoiceable: false).find_each do |charge|
-        Fees::CreatePayInAdvanceJob.perform_later(charge:, event:)
-      end
-
-      # NOTE: ensure event is processable
-      processable_event = billable_metric.count_agg? ||
-        billable_metric.custom_agg? ||
-        event.properties[billable_metric.field_name].present?
-      return unless processable_event
-
-      charges.where(invoiceable: true).find_each do |charge|
-        Invoices::CreatePayInAdvanceChargeJob.perform_later(charge:, event:, timestamp: event.timestamp)
-      end
+      Events::PayInAdvanceJob.perform_later(Events::CommonFactory.new_instance(source: event).as_json)
     end
 
     def charges
@@ -120,9 +118,7 @@ module Events
         .where(billable_metric: {code: event.code})
     end
 
-    def delivor_error_webhook(error:)
-      return unless organization.webhook_endpoints.any?
-
+    def deliver_error_webhook(error:)
       SendWebhookJob.perform_later('event.error', event, {error:})
     end
   end

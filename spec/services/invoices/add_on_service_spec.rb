@@ -39,7 +39,7 @@ RSpec.describe Invoices::AddOnService, type: :service do
           taxes_amount_cents: 40,
           taxes_rate: 20,
           sub_total_including_taxes_amount_cents: 240,
-          total_amount_cents: 240,
+          total_amount_cents: 240
         )
 
         expect(result.invoice.applied_taxes.count).to eq(1)
@@ -54,28 +54,28 @@ RSpec.describe Invoices::AddOnService, type: :service do
       end.to have_enqueued_job(SendWebhookJob)
     end
 
-    it 'does not enqueue an SendEmailJob' do
+    it 'enqueue an GeneratePdfAndNotifyJob with email false' do
       expect do
         invoice_service.create
-      end.not_to have_enqueued_job(SendEmailJob)
+      end.to have_enqueued_job(Invoices::GeneratePdfAndNotifyJob).with(hash_including(email: false))
     end
 
     context 'with lago_premium' do
       around { |test| lago_premium!(&test) }
 
-      it 'enqueues an SendEmailJob' do
+      it 'enqueues an GeneratePdfAndNotifyJob with email true' do
         expect do
           invoice_service.create
-        end.to have_enqueued_job(SendEmailJob)
+        end.to have_enqueued_job(Invoices::GeneratePdfAndNotifyJob).with(hash_including(email: true))
       end
 
       context 'when organization does not have right email settings' do
         before { applied_add_on.customer.organization.update!(email_settings: []) }
 
-        it 'does not enqueue an SendEmailJob' do
+        it 'enqueue an GeneratePdfAndNotifyJob with email false' do
           expect do
             invoice_service.create
-          end.not_to have_enqueued_job(SendEmailJob)
+          end.to have_enqueued_job(Invoices::GeneratePdfAndNotifyJob).with(hash_including(email: false))
         end
       end
     end
@@ -89,32 +89,26 @@ RSpec.describe Invoices::AddOnService, type: :service do
         properties: {
           organization_id: invoice.organization.id,
           invoice_id: invoice.id,
-          invoice_type: invoice.invoice_type,
-        },
+          invoice_type: invoice.invoice_type
+        }
       )
     end
 
     it 'creates a payment' do
-      payment_create_service = instance_double(Invoices::Payments::CreateService)
       allow(Invoices::Payments::CreateService)
-        .to receive(:new).and_return(payment_create_service)
-      allow(payment_create_service)
-        .to receive(:call)
+        .to receive(:call_async)
 
       invoice_service.create
 
-      expect(Invoices::Payments::CreateService).to have_received(:new)
-      expect(payment_create_service).to have_received(:call)
+      expect(Invoices::Payments::CreateService).to have_received(:call_async)
     end
 
-    context 'when organization does not have a webhook endpoint' do
-      before { applied_add_on.customer.organization.webhook_endpoints.destroy_all }
+    it_behaves_like 'syncs invoice' do
+      let(:service_call) { invoice_service.create }
+    end
 
-      it 'does not enqueues a SendWebhookJob' do
-        expect do
-          invoice_service.create
-        end.not_to have_enqueued_job(SendWebhookJob)
-      end
+    it_behaves_like "applies invoice_custom_sections" do
+      let(:service_call) { invoice_service.create }
     end
 
     context 'with customer timezone' do

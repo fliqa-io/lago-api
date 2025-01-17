@@ -4,17 +4,18 @@ require 'rails_helper'
 
 RSpec.describe Api::V1::Analytics::InvoicedUsagesController, type: :request do # rubocop:disable RSpec/FilePath
   describe 'GET /analytics/invoiced_usage' do
+    subject { get_with_token(organization, '/api/v1/analytics/invoiced_usage') }
+
     let(:customer) { create(:customer, organization:) }
     let(:organization) { create(:organization) }
 
     context 'when license is premium' do
       around { |test| lago_premium!(&test) }
 
+      include_examples 'requires API permission', 'analytic', 'read'
+
       it 'returns the invoiced usage' do
-        get_with_token(
-          organization,
-          '/api/v1/analytics/invoiced_usage',
-        )
+        subject
 
         aggregate_failures do
           expect(response).to have_http_status(:success)
@@ -26,11 +27,7 @@ RSpec.describe Api::V1::Analytics::InvoicedUsagesController, type: :request do #
 
     context 'when license is not premium' do
       it 'returns forbidden status' do
-        get_with_token(
-          organization,
-          '/api/v1/analytics/invoiced_usage',
-        )
-
+        subject
         expect(response).to have_http_status(:forbidden)
       end
     end

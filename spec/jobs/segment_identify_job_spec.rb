@@ -24,10 +24,10 @@ describe SegmentIdentifyJob, job: true do
           traits: {
             created_at: membership.created_at,
             hosting_type: 'self',
-            version: Utils::VersionService.new.version.version.number,
+            version: 'test',
             organization_name: membership.organization.name,
-            email: membership.user.email,
-          },
+            email: membership.user.email
+          }
         )
     end
 
@@ -40,7 +40,7 @@ describe SegmentIdentifyJob, job: true do
         subject.perform_now(membership_id:)
 
         expect(SEGMENT_CLIENT).to have_received(:identify).with(
-          hash_including(traits: hash_including(hosting_type: 'cloud')),
+          hash_including(traits: hash_including(hosting_type: 'cloud'))
         )
       end
     end

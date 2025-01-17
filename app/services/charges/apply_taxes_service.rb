@@ -14,14 +14,12 @@ module Charges
       return result.not_found_failure!(resource: 'tax') if (tax_codes - taxes.pluck(:code)).present?
 
       charge.applied_taxes.where(
-        tax_id: charge.taxes.where.not(code: tax_codes).pluck(:id),
+        tax_id: charge.taxes.where.not(code: tax_codes).pluck(:id)
       ).destroy_all
 
       result.applied_taxes = tax_codes.map do |tax_code|
         charge.applied_taxes.find_or_create_by!(tax: taxes.find_by(code: tax_code))
       end
-
-      charge.plan.invoices.draft.update_all(ready_to_be_refreshed: true) # rubocop:disable Rails/SkipsModelValidations
 
       result
     rescue ActiveRecord::RecordInvalid => e

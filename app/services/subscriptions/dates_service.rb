@@ -19,6 +19,23 @@ module Subscriptions
       klass.new(subscription, billing_at, current_usage)
     end
 
+    # Note: For context, the notion of `(from|to)_datetime` vs `charges_(from|to)_datetime` was introduced BEFORE
+    #       pay in advance charges were introduced. Pay in Advance charges should mostly use `(from|to)_datetime` range.
+    #       The boundaries might need a third range, like `in_advance_charges_(from|to)_datetime` for instance.
+    #       Ideally, we should also store the dates on EACH FEE.
+    def self.charge_pay_in_advance_interval(timestamp, subscription)
+      date_service = new_instance(
+        subscription,
+        Time.zone.at(timestamp),
+        current_usage: true
+      )
+
+      {
+        charges_from_date: date_service.charges_from_datetime&.to_date,
+        charges_to_date: date_service.charges_to_datetime&.to_date
+      }
+    end
+
     def initialize(subscription, billing_at, current_usage)
       @subscription = subscription
 
@@ -30,6 +47,7 @@ module Subscriptions
 
     def from_datetime
       return @from_datetime if @from_datetime
+      return unless subscription.started_at
 
       @from_datetime = customer_timezone_shift(compute_from_date)
 
@@ -45,24 +63,27 @@ module Subscriptions
 
     def to_datetime
       return @to_datetime if @to_datetime
+      return unless subscription.started_at
 
       @to_datetime = customer_timezone_shift(compute_to_date, end_of_day: true)
-      terminated_at = subscription.terminated_at&.change(usec: 0)
-      bill_at = billing_at&.change(usec: 0)
+      terminated_at = subscription.terminated_at&.to_time&.round
 
-      if subscription.terminated? && @to_datetime > terminated_at && bill_at && bill_at >= terminated_at
+      if subscription.terminated_at?(billing_at) && @to_datetime > terminated_at
         @to_datetime = terminated_at
       end
 
+      @to_datetime = subscription.started_at if @to_datetime < subscription.started_at
       @to_datetime
     end
 
     def charges_from_datetime
+      return unless subscription.started_at
+
       datetime = customer_timezone_shift(compute_charges_from_date)
 
       # NOTE: If customer applicable timezone changes during a billing period, there is a risk to double count events
       #       or to miss some. To prevent it, we have to ensure that invoice bounds does not overlap or that there is no
-      #       hole bewtween a charges_from_datetime and the charges_to_datetime of the previous period
+      #       hole between a charges_from_datetime and the charges_to_datetime of the previous period
       if timezone_has_changed? && previous_charge_to_datetime
         new_datetime = previous_charge_to_datetime + 1.second
 
@@ -77,8 +98,11 @@ module Subscriptions
     end
 
     def charges_to_datetime
+      return unless subscription.started_at
+
       datetime = customer_timezone_shift(compute_charges_to_date, end_of_day: true)
-      datetime = subscription.terminated_at if subscription.terminated? && datetime > subscription.terminated_at
+      datetime = subscription.terminated_at if subscription.terminated_at?(datetime)
+      datetime = subscription.started_at if datetime < subscription.started_at
 
       datetime
     end
@@ -134,6 +158,8 @@ module Subscriptions
       subscription.subscription_at.in_time_zone(customer.applicable_timezone)
     end
 
+    # NOTE: This method converts a DAY epress in the customer timezone into a proper UTC datetime
+    #       Example: `2024-03-01` in `America/New_York` will be converted to `2024-03-01T05:00:00 UTC`
     def customer_timezone_shift(date, end_of_day: false)
       result = date.in_time_zone(customer.applicable_timezone)
       result = result.end_of_day if end_of_day
@@ -162,11 +188,11 @@ module Subscriptions
     def terminated_pay_in_arrear?
       # NOTE: In case of termination or upgrade when we are terminating old plan (paying in arrear),
       #       we should take to the beginning of the billing period
-      subscription.terminated? && plan.pay_in_arrear? && !subscription.downgraded?
+      subscription.terminated_at?(billing_at) && plan.pay_in_arrear? && !subscription.downgraded?
     end
 
     def terminated?
-      subscription.terminated? && !subscription.next_subscription
+      subscription.terminated_at?(billing_at) && !subscription.next_subscription
     end
 
     # NOTE: Handle leap years and anniversary date > 28
@@ -216,6 +242,10 @@ module Subscriptions
     end
 
     def first_month_in_yearly_period?
+      false
+    end
+
+    def first_month_in_first_yearly_period?
       false
     end
 

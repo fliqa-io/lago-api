@@ -14,13 +14,13 @@ RSpec.describe Integrations::Aggregator::ItemsService do
       {
         'Connection-Id' => integration.connection_id,
         'Authorization' => "Bearer #{ENV["NANGO_SECRET_KEY"]}",
-        'Provider-Config-Key' => 'netsuite',
+        'Provider-Config-Key' => 'netsuite-tba'
       }
     end
     let(:params) do
       {
         limit: 450,
-        cursor: '',
+        cursor: ''
       }
     end
 
@@ -49,6 +49,16 @@ RSpec.describe Integrations::Aggregator::ItemsService do
         expect(result.items.pluck('external_id')).to eq(%w[755 745 753 484 828])
         expect(IntegrationItem.count).to eq(5)
       end
+    end
+  end
+
+  describe '#action_path' do
+    subject(:action_path_call) { items_service.action_path }
+
+    let(:action_path) { 'v1/netsuite/items' }
+
+    it 'returns the path' do
+      expect(subject).to eq(action_path)
     end
   end
 end

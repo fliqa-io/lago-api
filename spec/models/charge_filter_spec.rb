@@ -25,8 +25,8 @@ RSpec.describe ChargeFilter, type: :model do
       let(:service_response) do
         BaseService::Result.new.validation_failure!(
           errors: {
-            amount: ['invalid_amount'],
-          },
+            amount: ['invalid_amount']
+          }
         )
       end
 
@@ -61,8 +61,8 @@ RSpec.describe ChargeFilter, type: :model do
           errors: {
             per_unit_amount: ['invalid_amount'],
             flat_amount: ['invalid_amount'],
-            graduated_ranges: ['missing_graduated_ranges'],
-          },
+            graduated_ranges: ['missing_graduated_ranges']
+          }
         )
       end
 
@@ -100,8 +100,8 @@ RSpec.describe ChargeFilter, type: :model do
           errors: {
             amount: ['invalid_amount'],
             free_units: ['invalid_free_units'],
-            package_size: ['invalid_package_size'],
-          },
+            package_size: ['invalid_package_size']
+          }
         )
       end
 
@@ -158,8 +158,8 @@ RSpec.describe ChargeFilter, type: :model do
             amount: ['invalid_fixed_amount'],
             free_units_per_events: ['invalid_free_units_per_events'],
             free_units_per_total_aggregation: ['invalid_free_units_per_total_aggregation'],
-            rate: ['invalid_rate'],
-          },
+            rate: ['invalid_rate']
+          }
         )
       end
 
@@ -216,8 +216,8 @@ RSpec.describe ChargeFilter, type: :model do
         BaseService::Result.new.validation_failure!(
           errors: {
             amount: ['invalid_amount'],
-            volume_ranges: ['invalid_volume_ranges'],
-          },
+            volume_ranges: ['invalid_volume_ranges']
+          }
         )
       end
 
@@ -275,8 +275,8 @@ RSpec.describe ChargeFilter, type: :model do
         BaseService::Result.new.validation_failure!(
           errors: {
             rate: ['invalid_rate'],
-            ranges: ['invalid_graduated_percentage_ranges'],
-          },
+            ranges: ['invalid_graduated_percentage_ranges']
+          }
         )
       end
 
@@ -332,7 +332,7 @@ RSpec.describe ChargeFilter, type: :model do
     let(:values) do
       [
         create(:charge_filter_value, values: ['card'], charge_filter:, billable_metric_filter: method_filter),
-        create(:charge_filter_value, values: ['visa'], charge_filter:, billable_metric_filter: scheme_filter),
+        create(:charge_filter_value, values: ['visa'], charge_filter:, billable_metric_filter: scheme_filter)
       ]
     end
 
@@ -359,7 +359,7 @@ RSpec.describe ChargeFilter, type: :model do
     let(:values) do
       [
         create(:charge_filter_value, charge_filter:, values: ['credit'], billable_metric_filter: card),
-        create(:charge_filter_value, charge_filter:, values: ['visa'], billable_metric_filter: scheme),
+        create(:charge_filter_value, charge_filter:, values: ['visa'], billable_metric_filter: scheme)
       ]
     end
 
@@ -369,8 +369,32 @@ RSpec.describe ChargeFilter, type: :model do
       expect(charge_filter.to_h).to eq(
         {
           'card' => ['credit'],
-          'scheme' => ['visa'],
-        },
+          'scheme' => ['visa']
+        }
+      )
+    end
+  end
+
+  describe '#to_h_with_discarded' do
+    subject(:charge_filter) { create(:charge_filter) }
+
+    let(:card) { create(:billable_metric_filter, key: 'card', values: %w[credit debit]) }
+    let(:scheme) { create(:billable_metric_filter, key: 'scheme', values: %w[visa mastercard]) }
+    let(:values) do
+      [
+        create(:charge_filter_value, charge_filter:, values: ['credit'], billable_metric_filter: card).discard,
+        create(:charge_filter_value, charge_filter:, values: ['visa'], billable_metric_filter: scheme).discard
+      ]
+    end
+
+    before { values }
+
+    it 'returns the values as a hash' do
+      expect(charge_filter.to_h_with_discarded).to eq(
+        {
+          'card' => ['credit'],
+          'scheme' => ['visa']
+        }
       )
     end
   end
@@ -386,8 +410,8 @@ RSpec.describe ChargeFilter, type: :model do
         build(
           :charge_filter_value,
           values: [ChargeFilterValue::ALL_FILTER_VALUES],
-          billable_metric_filter: scheme,
-        ),
+          billable_metric_filter: scheme
+        )
       ]
     end
 
@@ -395,8 +419,8 @@ RSpec.describe ChargeFilter, type: :model do
       expect(charge_filter.to_h_with_all_values).to eq(
         {
           'card' => ['credit'],
-          'scheme' => %w[visa mastercard],
-        },
+          'scheme' => %w[visa mastercard]
+        }
       )
     end
   end

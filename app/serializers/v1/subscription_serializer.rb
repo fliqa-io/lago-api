@@ -22,19 +22,18 @@ module V1
         previous_plan_code: model.previous_subscription&.plan&.code,
         next_plan_code: model.next_subscription&.plan&.code,
         downgrade_plan_date: model.downgrade_plan_date&.iso8601,
-      }.merge(legacy_values)
+        current_billing_period_started_at: dates_service.charges_from_datetime&.iso8601,
+        current_billing_period_ending_at: dates_service.charges_to_datetime&.iso8601
+      }
 
       payload = payload.merge(customer:) if include?(:customer)
       payload = payload.merge(plan:) if include?(:plan)
+      payload = payload.merge(usage_threshold:) if include?(:usage_threshold)
 
       payload
     end
 
     private
-
-    def legacy_values
-      ::V1::Legacy::SubscriptionSerializer.new(model).serialize
-    end
 
     def customer
       ::V1::CustomerSerializer.new(model.customer).serialize
@@ -43,8 +42,16 @@ module V1
     def plan
       ::V1::PlanSerializer.new(
         model.plan,
-        includes: %i[charges taxes minimum_commitment],
+        includes: %i[charges usage_thresholds taxes minimum_commitment]
       ).serialize
+    end
+
+    def usage_threshold
+      ::V1::UsageThresholdSerializer.new(options[:usage_threshold]).serialize
+    end
+
+    def dates_service
+      @dates_service ||= ::Subscriptions::DatesService.new_instance(model, Time.current, current_usage: true)
     end
   end
 end

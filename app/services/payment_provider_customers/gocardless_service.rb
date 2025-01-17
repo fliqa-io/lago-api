@@ -17,7 +17,7 @@ module PaymentProviderCustomers
       gocardless_result = create_gocardless_customer
 
       gocardless_customer.update!(
-        provider_customer_id: gocardless_result.id,
+        provider_customer_id: gocardless_result.id
       )
 
       deliver_success_webhook
@@ -41,7 +41,7 @@ module PaymentProviderCustomers
         SendWebhookJob.perform_later(
           'customer.checkout_url_generated',
           customer,
-          checkout_url: result.checkout_url,
+          checkout_url: result.checkout_url
         )
       end
 
@@ -65,17 +65,19 @@ module PaymentProviderCustomers
     def client
       @client || GoCardlessPro::Client.new(
         access_token: gocardless_payment_provider.access_token,
-        environment: gocardless_payment_provider.environment,
+        environment: gocardless_payment_provider.environment
       )
     end
 
     def create_gocardless_customer
-      client.customers.create(
-        params: {
-          email: customer.email&.strip&.split(',')&.first,
-          company_name: customer.name,
-        },
-      )
+      customer_params = {
+        email: customer.email&.strip&.split(',')&.first,
+        company_name: customer.name.presence,
+        given_name: customer.firstname.presence,
+        family_name: customer.lastname.presence
+      }.compact
+
+      client.customers.create(params: customer_params)
     rescue GoCardlessPro::Error => e
       deliver_error_webhook(e)
 
@@ -83,24 +85,20 @@ module PaymentProviderCustomers
     end
 
     def deliver_success_webhook
-      return unless organization.webhook_endpoints.any?
-
       SendWebhookJob.perform_later(
         'customer.payment_provider_created',
-        customer,
+        customer
       )
     end
 
     def deliver_error_webhook(gocardless_error)
-      return unless organization.webhook_endpoints.any?
-
       SendWebhookJob.perform_later(
         'customer.payment_provider_error',
         customer,
         provider_error: {
           message: gocardless_error.message,
-          error_code: gocardless_error.code,
-        },
+          error_code: gocardless_error.code
+        }
       )
     end
 
@@ -108,12 +106,12 @@ module PaymentProviderCustomers
       client.billing_requests.create(
         params: {
           mandate_request: {
-            scheme: 'bacs',
+            scheme: 'bacs'
           },
           links: {
-            customer: gocardless_customer_id,
-          },
-        },
+            customer: gocardless_customer_id
+          }
+        }
       )
     rescue GoCardlessPro::Error => e
       deliver_error_webhook(e)
@@ -127,9 +125,9 @@ module PaymentProviderCustomers
           redirect_uri: success_redirect_url,
           exit_uri: success_redirect_url,
           links: {
-            billing_request: billing_request_id,
-          },
-        },
+            billing_request: billing_request_id
+          }
+        }
       )
     rescue GoCardlessPro::Error => e
       deliver_error_webhook(e)

@@ -27,8 +27,8 @@ module Mutations
 
         result = ::CreditNotes::CreateService
           .new(
-            invoice: current_organization.invoices.not_generating.find_by(id: args[:invoice_id]),
-            **args,
+            invoice: current_organization.invoices.visible.find_by(id: args[:invoice_id]),
+            **args
           )
           .call
 

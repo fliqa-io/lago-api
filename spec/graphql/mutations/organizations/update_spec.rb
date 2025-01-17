@@ -26,6 +26,7 @@ RSpec.describe Mutations::Organizations::Update, type: :graphql do
           euTaxManagement,
           documentNumbering
           documentNumberPrefix
+          finalizeZeroAmountInvoice
           billingConfiguration {
             invoiceFooter,
             invoiceGracePeriod,
@@ -62,12 +63,13 @@ RSpec.describe Mutations::Organizations::Update, type: :graphql do
           euTaxManagement: true,
           webhookUrl: 'https://app.test.dev',
           documentNumberPrefix: 'ORG-2',
+          finalizeZeroAmountInvoice: false,
           billingConfiguration: {
             invoiceFooter: 'invoice footer',
-            documentLocale: 'fr',
-          },
-        },
-      },
+            documentLocale: 'fr'
+          }
+        }
+      }
     )
 
     result_data = result['data']['updateOrganization']
@@ -93,6 +95,33 @@ RSpec.describe Mutations::Organizations::Update, type: :graphql do
       expect(result_data['billingConfiguration']['documentLocale']).to eq('fr')
       expect(result_data['euTaxManagement']).to be_truthy
       expect(result_data['timezone']).to eq('TZ_UTC')
+      expect(result_data['finalizeZeroAmountInvoice']).to be false
+    end
+  end
+
+  context 'without necessary permissions' do
+    it 'ignores permissions-protected field and updates the rest' do
+      result = execute_graphql(
+        current_user: membership.user,
+        current_organization: membership.organization,
+        permissions: %w[],
+        query: mutation,
+        variables: {
+          input: {
+            email: 'foo@bar2.com',
+            taxIdentificationNumber: 'tax007',
+            emailSettings: ['invoice_finalized']
+          }
+        }
+      )
+
+      result_data = result['data']['updateOrganization']
+
+      aggregate_failures do
+        expect(result_data['email']).to eq 'foo@bar2.com'
+        expect(result_data['taxIdentificationNumber']).to eq 'tax007'
+        expect(result_data['emailSettings']).to be_nil
+      end
     end
   end
 
@@ -138,11 +167,11 @@ RSpec.describe Mutations::Organizations::Update, type: :graphql do
             email: 'foo@bar.com',
             timezone:,
             billingConfiguration: {
-              invoiceGracePeriod: 3,
+              invoiceGracePeriod: 3
             },
-            emailSettings: ['invoice_finalized'],
-          },
-        },
+            emailSettings: ['invoice_finalized']
+          }
+        }
       )
 
       result_data = result['data']['updateOrganization']
@@ -168,10 +197,10 @@ RSpec.describe Mutations::Organizations::Update, type: :graphql do
               email: 'foo@bar.com',
               timezone:,
               billingConfiguration: {
-                invoiceGracePeriod: 3,
-              },
-            },
-          },
+                invoiceGracePeriod: 3
+              }
+            }
+          }
         )
 
         result_data = result['data']['updateOrganization']

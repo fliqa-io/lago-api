@@ -20,8 +20,6 @@ module PaymentProviders
       end
 
       def deliver_error_webhook(action:, error:)
-        return unless organization.webhook_endpoints.any?
-
         SendWebhookJob.perform_later(
           'payment_provider.error',
           payment_provider,
@@ -29,8 +27,8 @@ module PaymentProviders
             source: 'stripe',
             action: action,
             message: error.message,
-            code: error.code,
-          },
+            code: error.code
+          }
         )
       end
     end

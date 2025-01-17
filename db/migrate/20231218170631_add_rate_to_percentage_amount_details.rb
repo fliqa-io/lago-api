@@ -2,7 +2,11 @@
 
 class AddRateToPercentageAmountDetails < ActiveRecord::Migration[7.0]
   class Fee < ApplicationRecord
-    belongs_to :charge, -> { with_discarded }, optional: true
+    belongs_to :charge, optional: true
+  end
+
+  class Charge < ApplicationRecord
+    enum charge_model: %i[percentage graduated_percentage].freeze
   end
 
   def up
@@ -11,8 +15,8 @@ class AddRateToPercentageAmountDetails < ActiveRecord::Migration[7.0]
     percentage_fees.find_each do |fee|
       fee.update!(
         amount_details: fee.amount_details.except!('per_unit_amount').merge(
-          rate: BigDecimal(fee.charge.properties['rate'].to_s),
-        ),
+          rate: BigDecimal(fee.charge.properties['rate'].to_s)
+        )
       )
     end
 

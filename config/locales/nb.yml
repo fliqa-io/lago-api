@@ -11,18 +11,18 @@ nb:
     - Lør
     abbr_month_names:
     -
-    - Jan
-    - Feb
-    - Mar
-    - Apr
-    - Mai
-    - Jun
-    - Jul
-    - Aug
-    - Sep
-    - Okt
-    - Nov
-    - Des
+    - jan.
+    - feb.
+    - mars
+    - apr.
+    - mai
+    - juni
+    - juli
+    - aug.
+    - sep.
+    - okt.
+    - nov.
+    - des.
     day_names:
     - Søndag
     - Mandag
@@ -32,7 +32,7 @@ nb:
     - Fredag
     - Lørdag
     formats:
-      default: "%d %b, %Y"
+      default: "%d. %b %Y"
     month_names:
     -
     - Januar

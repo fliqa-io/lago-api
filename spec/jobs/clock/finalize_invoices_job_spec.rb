@@ -11,25 +11,25 @@ describe Clock::FinalizeInvoicesJob, job: true do
       create(
         :invoice,
         status: :draft,
-        created_at: DateTime.parse('20 Jun 2022'),
+        issuing_date: DateTime.parse('23 Jun 2022').to_date,
         customer:,
-        organization: customer.organization,
+        organization: customer.organization
       )
     end
     let(:finalized_invoice) do
       create(
         :invoice,
         status: :finalized,
-        created_at: DateTime.parse('20 Jun 2022'),
+        issuing_date: DateTime.parse('23 Jun 2022').to_date,
         customer:,
-        organization: customer.organization,
+        organization: customer.organization
       )
     end
 
     before do
       draft_invoice
       finalized_invoice
-      allow(Invoices::FinalizeService).to receive(:call)
+      allow(Invoices::RefreshDraftAndFinalizeService).to receive(:call)
     end
 
     context 'when during the grace period' do

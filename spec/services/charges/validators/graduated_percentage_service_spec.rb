@@ -8,7 +8,7 @@ RSpec.describe Charges::Validators::GraduatedPercentageService, type: :service d
   let(:charge) do
     build(
       :graduated_percentage_charge,
-      properties: {graduated_percentage_ranges: ranges},
+      properties: {graduated_percentage_ranges: ranges}
     )
   end
 
@@ -20,7 +20,7 @@ RSpec.describe Charges::Validators::GraduatedPercentageService, type: :service d
       let(:charge) { build(:graduated_percentage_charge, properties: graduated_percentage_ranges, billable_metric:) }
       let(:graduated_percentage_ranges) do
         {
-          graduated_percentage_ranges: ranges,
+          graduated_percentage_ranges: ranges
         }
       end
 
@@ -77,7 +77,7 @@ RSpec.describe Charges::Validators::GraduatedPercentageService, type: :service d
         let(:ranges) do
           [
             {from_value: 0, to_value: 100},
-            {from_value: 120, to_value: 1000},
+            {from_value: 120, to_value: 1000}
           ]
         end
 
@@ -96,7 +96,7 @@ RSpec.describe Charges::Validators::GraduatedPercentageService, type: :service d
         let(:ranges) do
           [
             {from_value: 0, to_value: 100},
-            {from_value: 90, to_value: 1000},
+            {from_value: 90, to_value: 1000}
           ]
         end
 
@@ -205,20 +205,20 @@ RSpec.describe Charges::Validators::GraduatedPercentageService, type: :service d
             from_value: 0,
             to_value: 10,
             rate: '3',
-            flat_amount: '0',
+            flat_amount: '0'
           },
           {
             from_value: 11,
             to_value: 20,
             rate: '2',
-            flat_amount: '20',
+            flat_amount: '20'
           },
           {
             from_value: 21,
             to_value: nil,
             rate: '1',
-            flat_amount: '30',
-          },
+            flat_amount: '30'
+          }
         ]
       end
 

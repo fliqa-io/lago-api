@@ -5,15 +5,39 @@ require 'rails_helper'
 RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
   subject(:stripe_service) { described_class.new(stripe_customer) }
 
-  let(:customer) { create(:customer, organization:) }
+  let(:customer) { create(:customer, name: customer_name, organization:) }
   let(:stripe_provider) { create(:stripe_provider) }
   let(:organization) { stripe_provider.organization }
+  let(:customer_name) { nil }
 
   let(:stripe_customer) do
     create(:stripe_customer, customer:, provider_customer_id: nil)
   end
 
   describe '#create' do
+    context 'when customer name is present' do
+      let(:customer_name) { 'Big inc' }
+
+      it 'creates a stripe customer with the customer name' do
+        allow(Stripe::Customer).to receive(:create)
+          .and_return(Stripe::Customer.new(id: 'cus_123456'))
+        stripe_service.create
+
+        expect(Stripe::Customer).to have_received(:create).with(hash_including(name: customer_name), anything)
+      end
+    end
+
+    context 'when customer name is not present' do
+      it 'creates a stripe customer with the customer firstname and lastname' do
+        allow(Stripe::Customer).to receive(:create)
+          .and_return(Stripe::Customer.new(id: 'cus_123456'))
+        stripe_service.create
+
+        expected_name = "#{customer.firstname} #{customer.lastname}"
+        expect(Stripe::Customer).to have_received(:create).with(hash_including(name: expected_name), anything)
+      end
+    end
+
     it 'creates the stripe customer' do
       allow(Stripe::Customer).to receive(:create)
         .and_return(Stripe::Customer.new(id: 'cus_123456'))
@@ -78,7 +102,7 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
     context 'when payment provider has incorrect API key' do
       before do
         allow(Stripe::Customer).to receive(:create)
-          .and_raise(Stripe::AuthenticationError.new('API key invalid.'))
+          .and_raise(::Stripe::AuthenticationError.new('API key invalid.'))
       end
 
       it 'returns an unauthorized error' do
@@ -98,8 +122,8 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
             customer,
             provider_error: {
               message: 'API key invalid.',
-              error_code: nil,
-            },
+              error_code: nil
+            }
           ).on_queue(:webhook)
       end
     end
@@ -107,7 +131,7 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
     context 'when failing to create the customer' do
       it 'delivers an error webhook' do
         allow(Stripe::Customer).to receive(:create)
-          .and_raise(Stripe::InvalidRequestError.new('error', {}))
+          .and_raise(::Stripe::InvalidRequestError.new('error', {}))
 
         stripe_service.create
 
@@ -119,8 +143,8 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
             customer,
             provider_error: {
               message: 'error',
-              error_code: nil,
-            },
+              error_code: nil
+            }
           )
       end
     end
@@ -143,102 +167,158 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
   end
 
   describe '#update' do
-    context 'when stripe raises an error' do
-      before do
-        allow(Stripe::Customer).to receive(:update).and_raise(stripe_error)
-      end
+    let(:stripe_customer) do
+      create(:stripe_customer, customer:, provider_customer_id:)
+    end
 
-      context 'when stripe raises an invalid request error' do
-        let(:stripe_error) { Stripe::InvalidRequestError.new('Invalid request', nil) }
+    before { stripe_customer }
 
-        it 'returns an error result' do
-          result = stripe_service.update
+    context 'when stripe customer provider_customer_id is present' do
+      let(:provider_customer_id) { 'cus_123456' }
 
-          aggregate_failures do
-            expect(result).not_to be_success
-            expect(result.error).to be_a(BaseService::ServiceFailure)
-            expect(result.error.code).to eq('stripe_error')
-            expect(result.error.message).to eq('stripe_error: Invalid request')
+      context 'when stripe raises an error' do
+        before do
+          allow(Stripe::Customer).to receive(:update).and_raise(stripe_error)
+        end
+
+        context 'when stripe raises an invalid request error' do
+          let(:stripe_error) { ::Stripe::InvalidRequestError.new('Invalid request', nil) }
+
+          it 'returns an error result' do
+            result = stripe_service.update
+
+            aggregate_failures do
+              expect(result).not_to be_success
+              expect(result.error).to be_a(BaseService::ServiceFailure)
+              expect(result.error.code).to eq('stripe_error')
+              expect(result.error.message).to eq('stripe_error: Invalid request')
+            end
+          end
+
+          it 'delivers an error webhook' do
+            expect { stripe_service.update }.to enqueue_job(SendWebhookJob)
+              .with(
+                'customer.payment_provider_error',
+                customer,
+                provider_error: {
+                  message: 'Invalid request',
+                  error_code: nil
+                }
+              ).on_queue(:webhook)
           end
         end
 
-        it 'delivers an error webhook' do
-          expect { stripe_service.update }.to enqueue_job(SendWebhookJob)
-            .with(
-              'customer.payment_provider_error',
-              customer,
-              provider_error: {
-                message: 'Invalid request',
-                error_code: nil,
-              },
-            ).on_queue(:webhook)
-        end
-      end
+        context 'when stripe raises a permission error' do
+          let(:stripe_error) { Stripe::PermissionError.new('Permission error') }
 
-      context 'when stripe raises a permission error' do
-        let(:stripe_error) { Stripe::PermissionError.new('Permission error') }
+          it 'returns an error result' do
+            result = stripe_service.update
 
-        it 'returns an error result' do
-          result = stripe_service.update
+            aggregate_failures do
+              expect(result).not_to be_success
+              expect(result.error).to be_a(BaseService::ServiceFailure)
+              expect(result.error.code).to eq('stripe_error')
+              expect(result.error.message).to eq('stripe_error: Permission error')
+            end
+          end
 
-          aggregate_failures do
-            expect(result).not_to be_success
-            expect(result.error).to be_a(BaseService::ServiceFailure)
-            expect(result.error.code).to eq('stripe_error')
-            expect(result.error.message).to eq('stripe_error: Permission error')
+          it 'delivers an error webhook' do
+            expect { stripe_service.update }.to enqueue_job(SendWebhookJob)
+              .with(
+                'customer.payment_provider_error',
+                customer,
+                provider_error: {
+                  message: 'Permission error',
+                  error_code: nil
+                }
+              ).on_queue(:webhook)
           end
         end
 
-        it 'delivers an error webhook' do
-          expect { stripe_service.update }.to enqueue_job(SendWebhookJob)
-            .with(
-              'customer.payment_provider_error',
-              customer,
-              provider_error: {
-                message: 'Permission error',
-                error_code: nil,
-              },
-            ).on_queue(:webhook)
+        context 'when stripe raises an authentication error' do
+          let(:stripe_error) { ::Stripe::AuthenticationError.new('Invalid username.') }
+
+          it 'returns an error result' do
+            result = stripe_service.update
+
+            aggregate_failures do
+              expect(result).not_to be_success
+              expect(result.error).to be_a(BaseService::UnauthorizedFailure)
+              expect(result.error.message).to eq('Stripe authentication failed. Invalid username.')
+            end
+          end
+
+          it 'delivers an error webhook' do
+            expect { stripe_service.update }.to enqueue_job(SendWebhookJob)
+              .with(
+                'customer.payment_provider_error',
+                customer,
+                provider_error: {
+                  message: 'Invalid username.',
+                  error_code: nil
+                }
+              ).on_queue(:webhook)
+          end
         end
       end
 
-      context 'when stripe raises an authentication error' do
-        let(:stripe_error) { Stripe::AuthenticationError.new('Invalid username.') }
+      context 'when no stripe error is raised' do
+        before do
+          allow(Stripe::Customer).to receive(:update).and_return(true)
+        end
 
-        it 'returns an error result' do
-          result = stripe_service.update
+        context 'when stripe payment provider is present' do
+          it 'calls stripe API' do
+            stripe_service.update
 
-          aggregate_failures do
-            expect(result).not_to be_success
-            expect(result.error).to be_a(BaseService::UnauthorizedFailure)
-            expect(result.error.message).to eq('Stripe authentication failed. Invalid username.')
+            expect(Stripe::Customer).to have_received(:update)
+          end
+
+          it 'returns a successful result' do
+            result = stripe_service.update
+
+            expect(result).to be_success
+          end
+
+          it 'does not deliver an error webhook' do
+            expect { stripe_service.update }.not_to enqueue_job(SendWebhookJob)
           end
         end
 
-        it 'delivers an error webhook' do
-          expect { stripe_service.update }.to enqueue_job(SendWebhookJob)
-            .with(
-              'customer.payment_provider_error',
-              customer,
-              provider_error: {
-                message: 'Invalid username.',
-                error_code: nil,
-              },
-            ).on_queue(:webhook)
+        context 'when stripe payment provider is not present' do
+          before { stripe_provider.destroy! }
+
+          it 'does not call stripe API' do
+            stripe_service.update
+
+            expect(Stripe::Customer).not_to have_received(:update)
+          end
+
+          it 'returns a successful result' do
+            result = stripe_service.update
+
+            expect(result).to be_success
+          end
+
+          it 'does not deliver an error webhook' do
+            expect { stripe_service.update }.not_to enqueue_job(SendWebhookJob)
+          end
         end
       end
     end
 
-    context 'when no stripe error is raised' do
+    context 'when stripe customer provider_customer_id is not present' do
+      let(:provider_customer_id) { nil }
+
       before do
         allow(Stripe::Customer).to receive(:update).and_return(true)
       end
 
       context 'when stripe payment provider is present' do
-        it 'calls stripe API' do
+        it 'does not call stripe API' do
           stripe_service.update
 
-          expect(Stripe::Customer).to have_received(:update)
+          expect(Stripe::Customer).not_to have_received(:update)
         end
 
         it 'returns a successful result' do
@@ -274,243 +354,6 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
     end
   end
 
-  describe '#update_provider_default_payment_method' do
-    subject(:stripe_service) { described_class.new }
-
-    let(:stripe_customer) do
-      create(:stripe_customer, customer:, provider_customer_id: 'cus_123456')
-    end
-
-    before do
-      allow(Stripe::Customer).to receive(:update).and_return(true)
-    end
-
-    it 'updates provider default payment method' do
-      result = stripe_service.update_provider_default_payment_method(
-        organization_id: organization.id,
-        stripe_customer_id: stripe_customer.provider_customer_id,
-        payment_method_id: 'pm_123456',
-      )
-
-      aggregate_failures do
-        expect(result).to be_success
-        expect(result.payment_method).to eq('pm_123456')
-      end
-    end
-
-    context 'when customer is not found' do
-      it 'returns an empty result' do
-        result = stripe_service.update_provider_default_payment_method(
-          organization_id: organization.id,
-          stripe_customer_id: 'cus_InvaLid',
-          payment_method_id: 'pm_123456',
-        )
-
-        aggregate_failures do
-          expect(result).to be_success
-          expect(result.payment_method).to be_nil
-        end
-      end
-
-      context 'when customer in metadata is not found' do
-        it 'returns an empty response' do
-          result = stripe_service.update_provider_default_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: 'cus_InvaLid',
-            payment_method_id: 'pm_123456',
-            metadata: {
-              lago_customer_id: SecureRandom.uuid,
-            },
-          )
-
-          aggregate_failures do
-            expect(result).to be_success
-            expect(result.payment_method).to be_nil
-          end
-        end
-      end
-
-      context 'when customer in metadata exists' do
-        it 'returns a not found error' do
-          result = stripe_service.update_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: 'cus_InvaLid',
-            payment_method_id: 'pm_123456',
-            metadata: {
-              lago_customer_id: customer.id,
-            },
-          )
-
-          aggregate_failures do
-            expect(result).not_to be_success
-            expect(result.error).to be_a(BaseService::NotFoundFailure)
-            expect(result.error.message).to eq('stripe_customer_not_found')
-          end
-        end
-      end
-    end
-
-    context 'when stripe customer id is missing' do
-      it 'returns a not found error' do
-        result = stripe_service.update_provider_default_payment_method(
-          organization_id: organization.id,
-          stripe_customer_id: nil,
-          payment_method_id: 'pm_123456',
-        )
-
-        aggregate_failures do
-          expect(result).not_to be_success
-          expect(result.error).to be_a(BaseService::NotFoundFailure)
-          expect(result.error.message).to eq('stripe_customer_not_found')
-        end
-      end
-    end
-  end
-
-  describe '#update_payment_method' do
-    subject(:stripe_service) { described_class.new }
-
-    let(:stripe_customer) do
-      create(:stripe_customer, customer:, provider_customer_id: 'cus_123456')
-    end
-
-    it 'updates the customer payment method' do
-      result = stripe_service.update_payment_method(
-        organization_id: organization.id,
-        stripe_customer_id: stripe_customer.provider_customer_id,
-        payment_method_id: 'pm_123456',
-      )
-
-      aggregate_failures do
-        expect(result).to be_success
-        expect(result.stripe_customer.payment_method_id).to eq('pm_123456')
-      end
-    end
-
-    context 'with pending invoices' do
-      let(:invoice) do
-        create(
-          :invoice,
-          customer:,
-          total_amount_cents: 200,
-          currency: 'EUR',
-          status:,
-          ready_for_payment_processing:,
-        )
-      end
-
-      let(:status) { 'finalized' }
-      let(:ready_for_payment_processing) { true }
-
-      before { invoice }
-
-      it 'enqueues jobs to reprocess the pending payment' do
-        result = stripe_service.update_payment_method(
-          organization_id: organization.id,
-          stripe_customer_id: stripe_customer.provider_customer_id,
-          payment_method_id: 'pm_123456',
-        )
-
-        aggregate_failures do
-          expect(result).to be_success
-
-          expect(Invoices::Payments::StripeCreateJob).to have_been_enqueued
-            .with(invoice)
-        end
-      end
-
-      context 'when invoices are not finalized' do
-        let(:status) { 'draft' }
-
-        it 'does not enqueue jobs to reprocess pending payment' do
-          result = stripe_service.update_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: stripe_customer.provider_customer_id,
-            payment_method_id: 'pm_123456',
-          )
-
-          aggregate_failures do
-            expect(result).to be_success
-
-            expect(Invoices::Payments::StripeCreateJob).not_to have_been_enqueued
-              .with(invoice)
-          end
-        end
-      end
-
-      context 'when invoices are not ready for payment processing' do
-        let(:ready_for_payment_processing) { 'false' }
-
-        it 'does not enqueue jobs to reprocess pending payment' do
-          result = stripe_service.update_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: stripe_customer.provider_customer_id,
-            payment_method_id: 'pm_123456',
-          )
-
-          aggregate_failures do
-            expect(result).to be_success
-
-            expect(Invoices::Payments::StripeCreateJob).not_to have_been_enqueued
-              .with(invoice)
-          end
-        end
-      end
-    end
-
-    context 'when customer is not found' do
-      it 'returns an empty result' do
-        result = stripe_service.update_payment_method(
-          organization_id: organization.id,
-          stripe_customer_id: 'cus_InvaLid',
-          payment_method_id: 'pm_123456',
-        )
-
-        aggregate_failures do
-          expect(result).to be_success
-          expect(result.stripe_customer).to be_nil
-        end
-      end
-
-      context 'when customer in metadata is not found' do
-        it 'returns an empty response' do
-          result = stripe_service.update_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: 'cus_InvaLid',
-            payment_method_id: 'pm_123456',
-            metadata: {
-              lago_customer_id: SecureRandom.uuid,
-            },
-          )
-
-          aggregate_failures do
-            expect(result).to be_success
-            expect(result.stripe_customer).to be_nil
-          end
-        end
-      end
-
-      context 'when customer in metadata exists' do
-        it 'returns a not found error' do
-          result = stripe_service.update_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: 'cus_InvaLid',
-            payment_method_id: 'pm_123456',
-            metadata: {
-              lago_customer_id: customer.id,
-            },
-          )
-
-          aggregate_failures do
-            expect(result).not_to be_success
-            expect(result.error).to be_a(BaseService::NotFoundFailure)
-            expect(result.error.message).to eq('stripe_customer_not_found')
-          end
-        end
-      end
-    end
-  end
-
   describe '#delete_payment_method' do
     subject(:stripe_service) { described_class.new }
 
@@ -521,7 +364,7 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
         :stripe_customer,
         customer:,
         provider_customer_id: 'cus_123456',
-        payment_method_id:,
+        payment_method_id:
       )
     end
 
@@ -529,7 +372,7 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
       result = stripe_service.delete_payment_method(
         organization_id: organization.id,
         stripe_customer_id: stripe_customer.provider_customer_id,
-        payment_method_id:,
+        payment_method_id:
       )
 
       aggregate_failures do
@@ -543,7 +386,7 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
         result = stripe_service.delete_payment_method(
           organization_id: organization.id,
           stripe_customer_id: stripe_customer.provider_customer_id,
-          payment_method_id: 'other_payment_method_id',
+          payment_method_id: 'other_payment_method_id'
         )
 
         aggregate_failures do
@@ -558,7 +401,7 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
         result = stripe_service.delete_payment_method(
           organization_id: organization.id,
           stripe_customer_id: 'cus_InvaLid',
-          payment_method_id: 'pm_123456',
+          payment_method_id: 'pm_123456'
         )
 
         aggregate_failures do
@@ -574,8 +417,8 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
             stripe_customer_id: 'cus_InvaLid',
             payment_method_id: 'pm_123456',
             metadata: {
-              lago_customer_id: SecureRandom.uuid,
-            },
+              lago_customer_id: SecureRandom.uuid
+            }
           )
 
           aggregate_failures do
@@ -592,8 +435,8 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
             stripe_customer_id: 'cus_InvaLid',
             payment_method_id: 'pm_123456',
             metadata: {
-              lago_customer_id: customer.id,
-            },
+              lago_customer_id: customer.id
+            }
           )
 
           aggregate_failures do
@@ -614,7 +457,7 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
         :stripe_customer,
         customer:,
         provider_customer_id: 'cus_123456',
-        payment_method_id:,
+        payment_method_id:
       )
     end
 
@@ -647,7 +490,7 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
       before do
         allow(stripe_api_customer)
           .to receive(:retrieve_payment_method)
-          .and_raise(Stripe::InvalidRequestError.new('error', {}))
+          .and_raise(::Stripe::InvalidRequestError.new('error', {}))
       end
 
       it 'returns a failed result' do
@@ -664,12 +507,10 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
   end
 
   describe '#generate_checkout_url' do
-    before do
-      allow(Stripe::Checkout::Session).to receive(:create)
-        .and_return({'url' => 'https://example.com'})
-    end
-
     it 'delivers a webhook with checkout url' do
+      allow(::Stripe::Checkout::Session).to receive(:create)
+        .and_return({'url' => 'https://example.com'})
+
       stripe_service.generate_checkout_url
 
       aggregate_failures do
@@ -686,6 +527,34 @@ RSpec.describe PaymentProviderCustomers::StripeService, type: :service do
 
         expect(SendWebhookJob).not_to have_been_enqueued
           .with('customer.checkout_url_generated', customer, checkout_url: 'https://example.com')
+      end
+    end
+
+    context 'when stripe raises an authentication error' do
+      let(:stripe_error) { ::Stripe::AuthenticationError.new('Expired API Key provided') }
+
+      before { allow(::Stripe::Checkout::Session).to receive(:create).and_raise(stripe_error) }
+
+      it 'returns an error result' do
+        result = described_class.new(stripe_customer).generate_checkout_url
+
+        aggregate_failures do
+          expect(result).not_to be_success
+          expect(result.error).to be_a(BaseService::UnauthorizedFailure)
+          expect(result.error.message).to eq('Stripe authentication failed. Expired API Key provided')
+        end
+      end
+
+      it 'delivers an error webhook' do
+        expect { described_class.new(stripe_customer).generate_checkout_url }.to enqueue_job(SendWebhookJob)
+          .with(
+            'customer.payment_provider_error',
+            customer,
+            provider_error: {
+              message: 'Expired API Key provided',
+              error_code: nil
+            }
+          ).on_queue(:webhook)
       end
     end
   end

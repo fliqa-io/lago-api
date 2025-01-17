@@ -10,16 +10,14 @@ module BillableMetrics
     def call
       return result.not_found_failure!(resource: 'billable_metric') unless metric
 
+      BillableMetrics::ExpressionCacheService.expire_cache(metric.organization.id, metric.code)
+
       draft_invoice_ids = Invoice.draft.joins(plans: [:billable_metrics])
         .where(billable_metrics: {id: metric.id}).distinct.pluck(:id)
 
       ActiveRecord::Base.transaction do
         metric.discard!
         metric.charges.discard_all
-        metric.groups.each do |group|
-          group.properties.discard_all
-          group.discard!
-        end
 
         discard_filters
 
@@ -57,8 +55,8 @@ module BillableMetrics
           description: metric.description,
           aggregation_type: metric.aggregation_type,
           aggregation_property: metric.field_name,
-          organization_id: metric.organization_id,
-        },
+          organization_id: metric.organization_id
+        }
       )
     end
   end

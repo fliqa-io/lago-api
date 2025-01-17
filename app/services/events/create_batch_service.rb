@@ -14,6 +14,10 @@ module Events
     end
 
     def call
+      if events_params.blank?
+        return result.single_validation_failure!(error_code: 'no_events', field: :events)
+      end
+
       if events_params.count > MAX_LENGTH
         return result.single_validation_failure!(error_code: 'too_many_events', field: :events)
       end
@@ -40,14 +44,18 @@ module Events
         event.organization_id = organization.id
         event.code = event_params[:code]
         event.transaction_id = event_params[:transaction_id]
-        event.external_customer_id = event_params[:external_customer_id]
         event.external_subscription_id = event_params[:external_subscription_id]
         event.properties = event_params[:properties] || {}
         event.metadata = metadata || {}
-        event.timestamp = Time.zone.at(event_params[:timestamp] ? event_params[:timestamp].to_f : timestamp)
+        event.timestamp = Time.zone.at(event_params[:timestamp] ? Float(event_params[:timestamp]) : timestamp)
+        event.precise_total_amount_cents = event_params[:precise_total_amount_cents]
+
+        CalculateExpressionService.call(organization:, event:).raise_if_error!
 
         result.events.push(event)
         result.errors = result.errors.merge({index => event.errors.messages}) unless event.valid?
+      rescue ArgumentError
+        result.errors = result.errors.merge({index => {timestamp: ['invalid_format']}})
       end
     end
 
@@ -68,6 +76,7 @@ module Events
 
       Karafka.producer.produce_async(
         topic: ENV['LAGO_KAFKA_RAW_EVENTS_TOPIC'],
+        key: "#{organization.id}-#{event.external_subscription_id}",
         payload: {
           organization_id: organization.id,
           external_customer_id: event.external_customer_id,
@@ -76,7 +85,10 @@ module Events
           timestamp: event.timestamp.to_f,
           code: event.code,
           properties: event.properties,
-        }.to_json,
+          ingested_at: Time.zone.now.iso8601[...-1],
+          precise_total_amount_cents: event.precise_total_amount_cents.present? ? event.precise_total_amount_cents.to_s : "0.0",
+          source: 'http_ruby'
+        }.to_json
       )
     end
   end

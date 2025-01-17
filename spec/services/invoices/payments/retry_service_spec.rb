@@ -13,7 +13,7 @@ RSpec.describe Invoices::Payments::RetryService, type: :service do
     it 'enqueues a job to create a new stripe payment' do
       expect do
         retry_service.call
-      end.to have_enqueued_job(Invoices::Payments::StripeCreateJob)
+      end.to have_enqueued_job(Invoices::Payments::CreateJob).with(invoice:, payment_provider: payment_provider.to_sym)
     end
 
     it 'enqueues a SendWebhookJob' do
@@ -40,7 +40,7 @@ RSpec.describe Invoices::Payments::RetryService, type: :service do
       it 'enqueues a job to create a gocardless payment' do
         expect do
           retry_service.call
-        end.to have_enqueued_job(Invoices::Payments::GocardlessCreateJob)
+        end.to have_enqueued_job(Invoices::Payments::CreateJob).with(invoice:, payment_provider: payment_provider.to_sym)
       end
     end
 
@@ -62,7 +62,7 @@ RSpec.describe Invoices::Payments::RetryService, type: :service do
           customer:,
           status: 'finalized',
           payment_status: 'succeeded',
-          organization: customer.organization,
+          organization: customer.organization
         )
       end
 
@@ -96,7 +96,7 @@ RSpec.describe Invoices::Payments::RetryService, type: :service do
           customer:,
           status: 'finalized',
           payment_status: 'failed',
-          ready_for_payment_processing: false,
+          ready_for_payment_processing: false
         )
       end
 

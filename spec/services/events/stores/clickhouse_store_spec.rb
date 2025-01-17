@@ -12,12 +12,12 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
         grouped_by:,
         grouped_by_values:,
         matching_filters:,
-        ignored_filters:,
-      },
+        ignored_filters:
+      }
     )
   end
 
-  let(:billable_metric) { create(:billable_metric, field_name: 'value') }
+  let(:billable_metric) { create(:billable_metric, field_name: 'value', code: 'bm:code') }
   let(:organization) { billable_metric.organization }
 
   let(:customer) { create(:customer, organization:) }
@@ -30,7 +30,7 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
     {
       from_datetime: subscription.started_at.beginning_of_day,
       to_datetime: subscription.started_at.end_of_month.end_of_day,
-      charges_duration: 31,
+      charges_duration: 31
     }
   end
 
@@ -59,14 +59,16 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
       (ignored_filters.first || {}).each { |key, values| properties[key] = values.first } if i.zero?
 
-      events << Clickhouse::EventsRaw.create!(
+      events << Clickhouse::EventsEnriched.create!(
         transaction_id: SecureRandom.uuid,
         organization_id: organization.id,
         external_subscription_id: subscription.external_id,
-        external_customer_id: customer.external_id,
         code:,
         timestamp: boundaries[:from_datetime] + (i + 1).days,
         properties:,
+        value: (i + 1).to_s,
+        decimal_value: (i + 1).to_d,
+        precise_total_amount_cents: i + 1
       )
     end
 
@@ -86,26 +88,26 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
   after do
     next if ENV['LAGO_CLICKHOUSE_ENABLED'].blank?
 
-    Clickhouse::EventsRaw.connection.execute('TRUNCATE TABLE events_raw')
+    Clickhouse::EventsEnriched.connection.execute('TRUNCATE TABLE events_enriched')
   end
 
   describe '.events' do
     it 'returns a list of events' do
-      expect(event_store.events.count).to eq(5)
+      expect(event_store.count).to eq(5)
     end
 
     context 'with grouped_by_values' do
       let(:grouped_by_values) { {'region' => 'europe'} }
 
       it 'returns a list of events' do
-        expect(event_store.events.count).to eq(3)
+        expect(event_store.count).to eq(3)
       end
 
       context 'when grouped_by_values value is nil' do
         let(:grouped_by_values) { {'region' => nil} }
 
         it 'returns a list of events' do
-          expect(event_store.events.count).to eq(5)
+          expect(event_store.count).to eq(5)
         end
       end
     end
@@ -115,8 +117,27 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
       let(:ignored_filters) { [{'city' => ['paris']}, {'city' => ['londons'], 'country' => ['united kingdom']}] }
 
       it 'returns a list of events' do
-        expect(event_store.events.count).to eq(2) # 1st event is ignored
+        expect(event_store.count).to eq(2) # 1st event is ignored
       end
+    end
+  end
+
+  describe '#distinct_codes' do
+    before do
+      Clickhouse::EventsEnriched.create!(
+        transaction_id: SecureRandom.uuid,
+        organization_id: organization.id,
+        external_subscription_id: subscription.external_id,
+        code: 'other_code',
+        timestamp: boundaries[:from_datetime] + (1..10).to_a.sample.days,
+        value: "value",
+        decimal_value: 0,
+        precise_total_amount_cents: 0
+      )
+    end
+
+    it 'returns the distinct event codes' do
+      expect(event_store.distinct_codes).to match_array([code, 'other_code'])
     end
   end
 
@@ -168,19 +189,69 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
     end
   end
 
+  describe '#sum_precise_total_amount_cents' do
+    it 'returns the sum of precise_total_amount_cent values' do
+      expect(event_store.sum_precise_total_amount_cents).to eq(15)
+    end
+  end
+
+  describe '#grouped_sum_precise_total_amount_cents' do
+    let(:grouped_by) { %w[cloud] }
+
+    it 'returns the sum of values grouped by the provided group' do
+      result = event_store.grouped_sum_precise_total_amount_cents
+
+      expect(result.count).to eq(4)
+
+      null_group = result.find { |v| v[:groups]['cloud'].nil? }
+      expect(null_group[:value]).to eq(6)
+
+      result[...-1].each do |row|
+        next if row[:groups]['cloud'].nil?
+
+        expect(row[:groups]['cloud']).not_to be_nil
+        expect(row[:value]).not_to be_nil
+      end
+    end
+
+    context 'with multiple groups' do
+      let(:grouped_by) { %w[cloud region] }
+
+      it 'returns the sum of values grouped by the provided groups' do
+        result = event_store.grouped_sum_precise_total_amount_cents
+
+        expect(result.count).to eq(4)
+
+        null_group = result.find { |v| v[:groups]['cloud'].nil? }
+        expect(null_group[:groups]['region']).to be_nil
+        expect(null_group[:value]).to eq(6)
+
+        result[...-1].each do |row|
+          next if row[:groups]['cloud'].nil?
+
+          expect(row[:groups]['cloud']).not_to be_nil
+          expect(row[:groups]['region']).not_to be_nil
+          expect(row[:value]).not_to be_nil
+        end
+      end
+    end
+  end
+
   describe '#active_unique_property?' do
     before { event_store.aggregation_property = billable_metric.field_name }
 
     it 'returns false when no previous events exist' do
-      event = ::Clickhouse::EventsRaw.create!(
+      bm_value = SecureRandom.uuid
+
+      event = ::Clickhouse::EventsEnriched.create!(
         organization_id: organization.id,
         external_subscription_id: subscription.external_id,
-        external_customer_id: customer.external_id,
         code:,
         timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
         properties: {
-          billable_metric.field_name => SecureRandom.uuid,
+          billable_metric.field_name => bm_value
         },
+        value: bm_value
       )
 
       expect(event_store).not_to be_active_unique_property(event)
@@ -188,26 +259,28 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
     context 'when event is already active' do
       it 'returns true if the event property is active' do
-        ::Clickhouse::EventsRaw.create!(
+        ::Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
           timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
           properties: {
-            billable_metric.field_name => 2,
+            billable_metric.field_name => 2
           },
+          value: "2",
+          decimal_value: 2
         )
 
-        event = ::Clickhouse::EventsRaw.create!(
+        event = ::Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
           timestamp: (boundaries[:from_datetime] + 3.days).end_of_day,
           properties: {
-            billable_metric.field_name => 2,
+            billable_metric.field_name => 2
           },
+          value: "2",
+          decimal_value: 2
         )
 
         expect(event_store).to be_active_unique_property(event)
@@ -216,27 +289,29 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
     context 'with a previous removed event' do
       it 'returns false' do
-        ::Clickhouse::EventsRaw.create!(
+        ::Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
           timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
           properties: {
             billable_metric.field_name => 2,
-            :operation_type => 'remove',
+            :operation_type => 'remove'
           },
+          value: "2",
+          decimal_value: 2
         )
 
-        event = ::Clickhouse::EventsRaw.create!(
+        event = ::Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
           timestamp: (boundaries[:from_datetime] + 3.days).end_of_day,
           properties: {
-            billable_metric.field_name => 2,
+            billable_metric.field_name => 2
           },
+          value: "2",
+          decimal_value: 2
         )
 
         expect(event_store).not_to be_active_unique_property(event)
@@ -246,17 +321,18 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
   describe '#unique_count' do
     it 'returns the number of unique active event properties' do
-      Clickhouse::EventsRaw.create!(
+      Clickhouse::EventsEnriched.create!(
         transaction_id: SecureRandom.uuid,
         organization_id: organization.id,
         external_subscription_id: subscription.external_id,
-        external_customer_id: customer.external_id,
         code:,
         timestamp: boundaries[:from_datetime] + 3.days,
         properties: {
           billable_metric.field_name => 2,
-          :operation_type => 'remove',
+          :operation_type => 'remove'
         },
+        value: "2",
+        decimal_value: 2
       )
 
       event_store.aggregation_property = billable_metric.field_name
@@ -267,29 +343,31 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
   describe '#prorated_unique_count' do
     it 'returns the number of unique active event properties' do
-      Clickhouse::EventsRaw.create!(
+      Clickhouse::EventsEnriched.create!(
         transaction_id: SecureRandom.uuid,
         organization_id: organization.id,
         external_subscription_id: subscription.external_id,
-        external_customer_id: customer.external_id,
         code:,
         timestamp: boundaries[:from_datetime] + 1.day,
         properties: {
-          billable_metric.field_name => 2,
+          billable_metric.field_name => 2
         },
+        value: "2",
+        decimal_value: 2
       )
 
-      Clickhouse::EventsRaw.create!(
+      Clickhouse::EventsEnriched.create!(
         transaction_id: SecureRandom.uuid,
         organization_id: organization.id,
         external_subscription_id: subscription.external_id,
-        external_customer_id: customer.external_id,
         code:,
         timestamp: (boundaries[:from_datetime] + 1.day).end_of_day,
         properties: {
           billable_metric.field_name => 2,
-          :operation_type => 'remove',
+          :operation_type => 'remove'
         },
+        value: "2",
+        decimal_value: 2
       )
 
       event_store.aggregation_property = billable_metric.field_name
@@ -305,48 +383,56 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
     let(:events) do
       [
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
+          transaction_id: SecureRandom.uuid,
           timestamp: boundaries[:from_datetime] + 1.hour,
           properties: {
             billable_metric.field_name => 2,
-            :agent_name => 'frodo',
+            :agent_name => 'frodo'
           },
+          value: "2",
+          decimal_value: 2
         ),
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
+          transaction_id: SecureRandom.uuid,
           timestamp: boundaries[:from_datetime] + 1.day,
           properties: {
             billable_metric.field_name => 2,
-            :agent_name => 'aragorn',
+            :agent_name => 'aragorn'
           },
+          value: "2",
+          decimal_value: 2
         ),
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
+          transaction_id: SecureRandom.uuid,
           timestamp: boundaries[:from_datetime] + 2.days,
           properties: {
             billable_metric.field_name => 2,
             :agent_name => 'aragorn',
-            :operation_type => 'remove',
+            :operation_type => 'remove'
           },
+          value: "2",
+          decimal_value: 2
         ),
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
+          transaction_id: SecureRandom.uuid,
           timestamp: boundaries[:from_datetime] + 2.days,
           properties: {billable_metric.field_name => 2},
-        ),
+          value: "2",
+          decimal_value: 2
+        )
       ]
     end
 
@@ -382,48 +468,56 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
     let(:events) do
       [
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
+          transaction_id: SecureRandom.uuid,
           timestamp: boundaries[:from_datetime] + 1.day,
           properties: {
             billable_metric.field_name => 2,
-            :agent_name => 'frodo',
+            :agent_name => 'frodo'
           },
+          value: "2",
+          decimal_value: 2
         ),
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
+          transaction_id: SecureRandom.uuid,
           timestamp: boundaries[:from_datetime] + 1.day,
           properties: {
             billable_metric.field_name => 2,
-            :agent_name => 'aragorn',
+            :agent_name => 'aragorn'
           },
+          value: "2",
+          decimal_value: 2
         ),
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
+          transaction_id: SecureRandom.uuid,
           timestamp: (boundaries[:from_datetime] + 1.day).end_of_day,
           properties: {
             billable_metric.field_name => 2,
             :agent_name => 'aragorn',
-            :operation_type => 'remove',
+            :operation_type => 'remove'
           },
+          value: "2",
+          decimal_value: 2
         ),
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
+          transaction_id: SecureRandom.uuid,
           timestamp: boundaries[:from_datetime] + 2.days,
           properties: {billable_metric.field_name => 2},
-        ),
+          value: "2",
+          decimal_value: 2
+        )
       ]
     end
 
@@ -456,29 +550,31 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
   describe '#prorated_unique_count_breakdown' do
     it 'returns the breakdown of add and remove of unique event properties' do
-      Clickhouse::EventsRaw.create!(
+      Clickhouse::EventsEnriched.create!(
         transaction_id: SecureRandom.uuid,
         organization_id: organization.id,
         external_subscription_id: subscription.external_id,
-        external_customer_id: customer.external_id,
         code:,
         timestamp: boundaries[:from_datetime] + 1.day,
         properties: {
-          billable_metric.field_name => 2,
+          billable_metric.field_name => 2
         },
+        value: "2",
+        decimal_value: 2
       )
 
-      Clickhouse::EventsRaw.create!(
+      Clickhouse::EventsEnriched.create!(
         transaction_id: SecureRandom.uuid,
         organization_id: organization.id,
         external_subscription_id: subscription.external_id,
-        external_customer_id: customer.external_id,
         code:,
         timestamp: (boundaries[:from_datetime] + 1.day).end_of_day,
         properties: {
           billable_metric.field_name => 2,
-          :operation_type => 'remove',
+          :operation_type => 'remove'
         },
+        value: "2",
+        decimal_value: 2
       )
 
       event_store.aggregation_property = billable_metric.field_name
@@ -526,6 +622,44 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
       event_store.numeric_property = true
 
       expect(event_store.events_values).to eq([1, 2, 3, 4, 5])
+    end
+
+    context 'when exclude_event is true' do
+      subject(:event_store) do
+        described_class.new(
+          code:,
+          subscription:,
+          boundaries:,
+          filters: {
+            grouped_by:,
+            grouped_by_values:,
+            matching_filters:,
+            ignored_filters:,
+            event:
+          }
+        )
+      end
+
+      let(:event) do
+        Clickhouse::EventsEnriched.create!(
+          transaction_id: SecureRandom.uuid,
+          organization_id: organization.id,
+          external_subscription_id: subscription.external_id,
+          code:,
+          timestamp: boundaries[:from_datetime] + 1.day,
+          properties: {billable_metric.field_name => 6},
+          value: "6",
+          decimal_value: 6
+        )
+      end
+
+      it 'excludes current event but returns the value attached to other events' do
+        event
+        event_store.aggregation_property = billable_metric.field_name
+        event_store.numeric_property = true
+
+        expect(event_store.events_values(exclude_event: true)).to eq([1, 2, 3, 4, 5])
+      end
     end
   end
 
@@ -593,7 +727,7 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
       event_store.numeric_property = true
 
       expect(event_store.prorated_events_values(31).map { |v| v.round(3) }).to eq(
-        [0.516, 0.968, 1.355, 1.677, 1.935],
+        [0.516, 0.968, 1.355, 1.677, 1.935]
       )
     end
   end
@@ -859,9 +993,9 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
         events.map do |e|
           {
             date: e.timestamp.to_date,
-            value: e.properties[billable_metric.field_name].to_f,
+            value: e.decimal_value
           }
-        end,
+        end
       )
     end
   end
@@ -877,7 +1011,7 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
         {timestamp: Time.zone.parse('2023-03-01 02:00:00'), value: -4},
         {timestamp: Time.zone.parse('2023-03-01 04:00:00'), value: -2},
         {timestamp: Time.zone.parse('2023-03-01 05:00:00'), value: 10},
-        {timestamp: Time.zone.parse('2023-03-01 05:30:00'), value: -10},
+        {timestamp: Time.zone.parse('2023-03-01 05:30:00'), value: -10}
       ]
     end
 
@@ -886,14 +1020,15 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
         properties = {value: values[:value]}
         properties[:region] = values[:region] if values[:region]
 
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           transaction_id: SecureRandom.uuid,
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
           timestamp: values[:timestamp],
           properties:,
+          value: values[:value].to_s,
+          decimal_value: values[:value].to_d
         )
       end
     end
@@ -910,7 +1045,7 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
     context 'with a single event' do
       let(:events_values) do
         [
-          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 1000},
+          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 1000}
         ]
       end
 
@@ -931,7 +1066,7 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
       let(:events_values) do
         [
           {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 3},
-          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 3},
+          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 3}
         ]
       end
 
@@ -961,7 +1096,7 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
 
       let(:events_values) do
         [
-          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 1000, region: 'europe'},
+          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 1000, region: 'europe'}
         ]
       end
 
@@ -1000,7 +1135,7 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
         {timestamp: Time.zone.parse('2023-03-01 02:00:00'), value: -4},
         {timestamp: Time.zone.parse('2023-03-01 04:00:00'), value: -2},
         {timestamp: Time.zone.parse('2023-03-01 05:00:00'), value: 10},
-        {timestamp: Time.zone.parse('2023-03-01 05:30:00'), value: -10},
+        {timestamp: Time.zone.parse('2023-03-01 05:30:00'), value: -10}
       ]
     end
 
@@ -1010,14 +1145,15 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
         properties[:region] = values[:region] if values[:region]
         properties[:agent_name] = values[:agent_name] if values[:agent_name]
 
-        Clickhouse::EventsRaw.create!(
+        Clickhouse::EventsEnriched.create!(
           transaction_id: SecureRandom.uuid,
           organization_id: organization.id,
           external_subscription_id: subscription.external_id,
-          external_customer_id: customer.external_id,
           code:,
           timestamp: values[:timestamp],
           properties:,
+          value: values[:value].to_s,
+          decimal_value: values[:value].to_d
         )
       end
     end
@@ -1059,7 +1195,7 @@ RSpec.describe Events::Stores::ClickhouseStore, type: :service, clickhouse: true
         [
           {groups: {'agent_name' => 'frodo', 'other' => nil}, value: 1000},
           {groups: {'agent_name' => 'aragorn', 'other' => nil}, value: 1000},
-          {groups: {'agent_name' => nil, 'other' => nil}, value: 1000},
+          {groups: {'agent_name' => nil, 'other' => nil}, value: 1000}
         ]
       end
 

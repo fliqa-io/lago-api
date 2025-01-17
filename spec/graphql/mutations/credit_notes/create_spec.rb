@@ -20,7 +20,7 @@ RSpec.describe Mutations::CreditNotes::Create, type: :graphql do
       currency: 'EUR',
       fees_amount_cents: 100,
       taxes_amount_cents: 120,
-      total_amount_cents: 120,
+      total_amount_cents: 120
     )
   end
 
@@ -71,15 +71,15 @@ RSpec.describe Mutations::CreditNotes::Create, type: :graphql do
           items: [
             {
               feeId: fee1.id,
-              amountCents: 10,
+              amountCents: 10
             },
             {
               feeId: fee2.id,
-              amountCents: 5,
-            },
-          ],
-        },
-      },
+              amountCents: 5
+            }
+          ]
+        }
+      }
     )
 
     result_data = result['data']['createCreditNote']
@@ -124,11 +124,11 @@ RSpec.describe Mutations::CreditNotes::Create, type: :graphql do
             items: [
               {
                 feeId: fee1.id,
-                amountCents: 15,
-              },
-            ],
-          },
-        },
+                amountCents: 15
+              }
+            ]
+          }
+        }
       )
 
       expect_not_found(result)

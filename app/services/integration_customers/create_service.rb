@@ -26,31 +26,40 @@ module IntegrationCustomers
     attr_reader :customer
 
     def sync_customer!
-      create_result = Integrations::Aggregator::Contacts::CreateService.call(integration:, customer:, subsidiary_id:)
-      return create_result if create_result.error
-
-      new_integration_customer = IntegrationCustomers::BaseCustomer.create!(
-        integration:,
-        customer:,
-        external_customer_id: create_result.contact_id,
-        type: customer_type,
-        subsidiary_id:,
-        sync_with_provider: true,
+      integration_customer_service = IntegrationCustomers::Factory.new_instance(
+        integration:, customer:, subsidiary_id:, **params
       )
 
-      result.integration_customer = new_integration_customer
+      return result unless integration_customer_service
+
+      sync_result = integration_customer_service.create
+
+      return sync_result if sync_result.error
+
+      result.integration_customer = sync_result.integration_customer
       result
     end
 
     def link_customer!
+      sync_with_provider = integration&.type&.to_s == 'Integrations::SalesforceIntegration'
+
       new_integration_customer = IntegrationCustomers::BaseCustomer.create!(
         integration:,
         customer:,
         external_customer_id: params[:external_customer_id],
         type: customer_type,
-        subsidiary_id:,
-        sync_with_provider: false,
+        sync_with_provider: sync_with_provider
       )
+
+      if integration&.type&.to_s == 'Integrations::NetsuiteIntegration'
+        new_integration_customer.subsidiary_id = subsidiary_id
+        new_integration_customer.save!
+      end
+
+      if integration&.type&.to_s == 'Integrations::HubspotIntegration'
+        new_integration_customer.targeted_object = targeted_object
+        new_integration_customer.save!
+      end
 
       result.integration_customer = new_integration_customer
       result

@@ -13,7 +13,7 @@ class SegmentIdentifyJob < ApplicationJob
       hosting_type:,
       version:,
       organization_name: membership.organization.name,
-      email: membership.user.email,
+      email: membership.user.email
     }
 
     SEGMENT_CLIENT.identify(user_id: membership_id, traits:)
@@ -26,6 +26,6 @@ class SegmentIdentifyJob < ApplicationJob
   end
 
   def version
-    Utils::VersionService.new.version.version.number
+    LAGO_VERSION.number
   end
 end

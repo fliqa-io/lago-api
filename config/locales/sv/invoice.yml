@@ -3,6 +3,7 @@ sv:
   invoice:
     all_subscriptions: Alla prenumerationer
     all_usage_based_fees: Alla avgifter baserade på användning
+    already_paid: Redan betalt
     amount: Belopp (exkl. moms)
     amount_with_tax: Belopp (inkl. moms)
     amount_without_tax: Belopp (exkl. moms)
@@ -16,6 +17,7 @@ sv:
     date_to: till och med
     details: "%{resource} specifikation”"
     document_name: Faktura
+    document_tax_name: Skattefaktura
     due_date: Förfaller %{date}
     fee_prorated: Avgiften är proraterad för användningsdagar, det visade enhetspriset är ett genomsnitt
     fees_from_to_date: Avgifter från %{from_date} till %{to_date}
@@ -38,6 +40,8 @@ sv:
       fee_per_package: Avgift per paket
       fee_per_package_unit_price: "%{amount} per %{package_size}"
       free_units_for_the_first: Gratis enheter för de första %{count}
+    paid_invoice: Betald faktura
+    paid_tax_invoice: Betald skattefaktura
     payment_term: Betalningsvillkor
     payment_term_days: "%{net_payment_term} dagar"
     percentage:
@@ -51,8 +55,10 @@ sv:
     prepaid_credit_invoice: Förskottsfaktura
     prepaid_credits: Förbetald kontobalans
     prepaid_credits_with_value: Förbetald kontobalans - %{wallet_name}
+    progressive_billing_credit: Redan fakturerad användning
     quarter: kvartal
     quarterly: Kvartalsvis
+    reached_usage_threshold: Denna progressiva fakturering skapas eftersom din ackumulerade användning har nått %{usage_amount} och överstiger %{threshold_amount} tröskeln.
     see_breakdown: Se uppdelning nedan
     sub_total: Delsumma
     sub_total_with_tax: Delsumma (inkl. moms)
@@ -62,6 +68,14 @@ sv:
     tax: Skatt
     tax_identification_number: 'Skatte ID: %{tax_identification_number}'
     tax_name: "%{name} (%{rate}% på %{amount})"
+    tax_name_only:
+      customer_exempt: Kunden är befriad från moms
+      juris_has_no_tax: Ingen skatt
+      juris_not_taxed: Ingen skatt
+      not_collecting: Ingen skatt
+      reverse_charge: Omvänd skattskyldighet - Skatteskyldighet överförd till kunden
+      transaction_exempt: Kunden är befriad från moms
+      unknown_taxation: Okänd
     tax_name_with_details: "%{name} (%{rate}%)"
     tax_rate: Momssats
     taxes:

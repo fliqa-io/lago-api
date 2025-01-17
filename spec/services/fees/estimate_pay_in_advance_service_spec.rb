@@ -17,7 +17,7 @@ RSpec.describe Fees::EstimatePayInAdvanceService do
       :subscription,
       customer:,
       plan:,
-      started_at: 1.year.ago,
+      started_at: 1.year.ago
     )
   end
 
@@ -25,7 +25,7 @@ RSpec.describe Fees::EstimatePayInAdvanceService do
     {
       code:,
       external_customer_id:,
-      external_subscription_id:,
+      external_subscription_id:
     }
   end
 
@@ -57,6 +57,7 @@ RSpec.describe Fees::EstimatePayInAdvanceService do
           invoiceable: charge,
           events_count: 1,
           pay_in_advance_event_id: nil,
+          pay_in_advance_event_transaction_id: String
         )
       end
     end
@@ -125,7 +126,7 @@ RSpec.describe Fees::EstimatePayInAdvanceService do
             :subscription,
             customer:,
             plan:,
-            started_at: 1.year.ago,
+            started_at: 1.year.ago
           )
         end
 
@@ -148,6 +149,7 @@ RSpec.describe Fees::EstimatePayInAdvanceService do
               invoiceable: charge,
               events_count: 1,
               pay_in_advance_event_id: nil,
+              pay_in_advance_event_transaction_id: String
             )
           end
         end

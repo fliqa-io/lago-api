@@ -18,7 +18,18 @@ RSpec.describe Mutations::Wallets::Create, type: :graphql do
           status
           currency
           expirationAt
-          recurringTransactionRules { lagoId, ruleType, interval, thresholdCredits, paidCredits, grantedCredits }
+          invoiceRequiresSuccessfulPayment
+          recurringTransactionRules {
+            lagoId
+            method
+            trigger
+            interval
+            thresholdCredits
+            paidCredits
+            grantedCredits
+            targetOngoingBalance
+            invoiceRequiresSuccessfulPayment
+          }
         }
       }
     GQL
@@ -30,7 +41,7 @@ RSpec.describe Mutations::Wallets::Create, type: :graphql do
   it_behaves_like 'requires current organization'
   it_behaves_like 'requires permission', 'wallets:create'
 
-  it 'create a wallet' do
+  it 'creates a wallet' do
     result = execute_graphql(
       current_user: membership.user,
       current_organization: membership.organization,
@@ -45,14 +56,18 @@ RSpec.describe Mutations::Wallets::Create, type: :graphql do
           grantedCredits: '0.00',
           expirationAt: expiration_at.iso8601,
           currency: 'EUR',
+          invoiceRequiresSuccessfulPayment: true,
           recurringTransactionRules: [
             {
-              ruleType: 'interval',
+              method: 'target',
+              trigger: 'interval',
               interval: 'monthly',
-            },
-          ],
-        },
-      },
+              targetOngoingBalance: '0.0',
+              invoiceRequiresSuccessfulPayment: true
+            }
+          ]
+        }
+      }
     )
 
     result_data = result['data']['createCustomerWallet']
@@ -60,13 +75,16 @@ RSpec.describe Mutations::Wallets::Create, type: :graphql do
     aggregate_failures do
       expect(result_data['id']).to be_present
       expect(result_data['name']).to eq('First Wallet')
+      expect(result_data['invoiceRequiresSuccessfulPayment']).to eq(true)
       expect(result_data['expirationAt']).to eq(expiration_at.iso8601)
       expect(result_data['recurringTransactionRules'].count).to eq(1)
       expect(result_data['recurringTransactionRules'][0]['lagoId']).to be_present
-      expect(result_data['recurringTransactionRules'][0]['ruleType']).to eq('interval')
+      expect(result_data['recurringTransactionRules'][0]['method']).to eq('target')
+      expect(result_data['recurringTransactionRules'][0]['trigger']).to eq('interval')
       expect(result_data['recurringTransactionRules'][0]['interval']).to eq('monthly')
       expect(result_data['recurringTransactionRules'][0]['paidCredits']).to eq('0.0')
       expect(result_data['recurringTransactionRules'][0]['grantedCredits']).to eq('0.0')
+      expect(result_data['recurringTransactionRules'][0]['invoiceRequiresSuccessfulPayment']).to eq(true)
     end
   end
 
@@ -85,9 +103,9 @@ RSpec.describe Mutations::Wallets::Create, type: :graphql do
             paidCredits: '0.00',
             grantedCredits: '0.00',
             expirationAt: (Time.zone.now + 1.year).iso8601,
-            currency: 'EUR',
-          },
-        },
+            currency: 'EUR'
+          }
+        }
       )
 
       result_data = result['data']['createCustomerWallet']

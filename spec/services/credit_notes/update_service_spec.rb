@@ -32,8 +32,8 @@ RSpec.describe CreditNotes::UpdateService, type: :service do
       properties: {
         organization_id: credit_note.organization.id,
         credit_note_id: credit_note.id,
-        refund_status: 'succeeded',
-      },
+        refund_status: 'succeeded'
+      }
     )
   end
 

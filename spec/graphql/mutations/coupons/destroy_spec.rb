@@ -25,8 +25,8 @@ RSpec.describe Mutations::Coupons::Destroy, type: :graphql do
       permissions: required_permission,
       query: mutation,
       variables: {
-        input: {id: coupon.id},
-      },
+        input: {id: coupon.id}
+      }
     )
 
     data = result['data']['destroyCoupon']

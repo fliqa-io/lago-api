@@ -8,28 +8,28 @@ RSpec.describe Events::CreateService, type: :service do
       organization:,
       params: create_args,
       timestamp: creation_timestamp,
-      metadata:,
+      metadata:
     )
   end
 
   let(:organization) { create(:organization) }
 
   let(:code) { 'sum_agg' }
-  let(:external_customer_id) { SecureRandom.uuid }
   let(:external_subscription_id) { SecureRandom.uuid }
   let(:timestamp) { Time.current.to_f }
   let(:transaction_id) { SecureRandom.uuid }
+  let(:precise_total_amount_cents) { nil }
 
   let(:creation_timestamp) { Time.current.to_f }
 
   let(:create_args) do
     {
-      external_customer_id:,
       external_subscription_id:,
       code:,
       transaction_id:,
+      precise_total_amount_cents:,
       properties: {foo: 'bar'},
-      timestamp:,
+      timestamp:
     }
   end
 
@@ -44,12 +44,12 @@ RSpec.describe Events::CreateService, type: :service do
 
         expect(result).to be_success
         expect(result.event).to have_attributes(
-          external_customer_id:,
           external_subscription_id:,
           transaction_id:,
           code:,
           timestamp: Time.zone.at(timestamp),
           properties: {'foo' => 'bar'},
+          precise_total_amount_cents: nil
         )
       end
     end
@@ -64,7 +64,7 @@ RSpec.describe Events::CreateService, type: :service do
           :event,
           organization:,
           transaction_id: create_args[:transaction_id],
-          external_subscription_id:,
+          external_subscription_id:
         )
       end
 
@@ -117,6 +117,17 @@ RSpec.describe Events::CreateService, type: :service do
       end
     end
 
+    context 'when timestamp is given in a wrong format' do
+      let(:timestamp) { Time.current.to_s }
+
+      it 'returns an error' do
+        result = create_service.call
+
+        expect(result).not_to be_success
+        expect(result.error.messages).to include({timestamp: ['invalid_format']})
+      end
+    end
+
     context 'when kafka is configured' do
       let(:karafka_producer) { instance_double(WaterDrop::Producer) }
 
@@ -132,6 +143,54 @@ RSpec.describe Events::CreateService, type: :service do
         create_service.call
 
         expect(karafka_producer).to have_received(:produce_async)
+      end
+    end
+
+    context "with an expression configured on the billable metric" do
+      let(:billable_metric) { create(:billable_metric, code:, organization:, field_name: "result", expression: "event.properties.left + event.properties.right") }
+
+      let(:create_args) do
+        {
+          external_subscription_id:,
+          code:,
+          transaction_id:,
+          precise_total_amount_cents:,
+          properties: {left: '1', right: '2'},
+          timestamp:
+        }
+      end
+
+      before do
+        billable_metric
+      end
+
+      it "creates an event and updates the field name with the result of the expression" do
+        result = create_service.call
+
+        expect(result).to be_success
+        expect(result.event.properties["result"]).to eq("3.0")
+      end
+    end
+
+    context 'with a precise_total_amount_cents' do
+      let(:precise_total_amount_cents) { "123.45" }
+
+      it 'creates an event with the precise_total_amount_cents' do
+        result = create_service.call
+
+        expect(result).to be_success
+        expect(result.event.precise_total_amount_cents).to eq(123.45)
+      end
+
+      context 'when precise_total_amount_cents is not a valid decimal value' do
+        let(:precise_total_amount_cents) { "asdfa" }
+
+        it 'creates an event' do
+          result = create_service.call
+
+          expect(result).to be_success
+          expect(result.event.precise_total_amount_cents).to eq(0)
+        end
       end
     end
   end

@@ -3,12 +3,11 @@
 require 'rails_helper'
 
 RSpec.describe Integrations::Netsuite::CreateService, type: :service do
-  let(:service) { described_class.new(membership.user) }
   let(:membership) { create(:membership) }
   let(:organization) { membership.organization }
 
   describe '#call' do
-    subject(:service_call) { service.call(**create_args) }
+    subject(:service_call) { described_class.call(params: create_args) }
 
     let(:name) { 'Netsuite 1' }
     let(:script_endpoint_url) { Faker::Internet.url }
@@ -21,8 +20,10 @@ RSpec.describe Integrations::Netsuite::CreateService, type: :service do
         connection_id: 'conn1',
         client_id: 'cl1',
         client_secret: 'secret',
+        token_id: 'xyz',
+        token_secret: 'zyx',
         account_id: 'acc1',
-        script_endpoint_url:,
+        script_endpoint_url:
       }
     end
 
@@ -61,7 +62,6 @@ RSpec.describe Integrations::Netsuite::CreateService, type: :service do
           allow(Integrations::Aggregator::SendRestletEndpointJob).to receive(:perform_later)
           allow(Integrations::Aggregator::PerformSyncJob).to receive(:perform_later)
           allow(Integrations::Aggregator::FetchItemsJob).to receive(:perform_later)
-          allow(Integrations::Aggregator::FetchTaxItemsJob).to receive(:perform_later)
         end
 
         context 'without validation errors' do
@@ -70,6 +70,8 @@ RSpec.describe Integrations::Netsuite::CreateService, type: :service do
 
             integration = Integrations::NetsuiteIntegration.order(:created_at).last
             expect(integration.name).to eq(name)
+            expect(integration.token_id).to eq('xyz')
+            expect(integration.token_secret).to eq('zyx')
             expect(integration.script_endpoint_url).to eq(script_endpoint_url)
           end
 

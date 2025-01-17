@@ -5,6 +5,9 @@ require:
   - rubocop-rails
   - rubocop-thread_safety
   - rubocop-graphql
+  - rubocop-factory_bot
+  - rubocop-rspec_rails
+  - ./dev/cops/service_call_cop.rb
 
 inherit_gem:
   standard: config/base.yml
@@ -21,17 +24,9 @@ AllCops:
 Style/StringLiterals:
   Enabled: false
 
-Style/TrailingCommaInArguments:
-  Enabled: false
-
-Style/TrailingCommaInArrayLiteral:
-  Enabled: false
-
-Style/TrailingCommaInBlockArgs:
-  Enabled: false
-
-Style/TrailingCommaInHashLiteral:
-  Enabled: false
+Style/FrozenStringLiteralComment:
+  Enabled: true
+  SafeAutoCorrect: true
 
 Performance/CaseWhenSplat:
   Enabled: true

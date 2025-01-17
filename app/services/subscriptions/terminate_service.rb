@@ -13,12 +13,14 @@ module Subscriptions
     def call
       return result.not_found_failure!(resource: 'subscription') if subscription.blank?
 
-      if subscription.starting_in_the_future?
-        subscription.mark_as_terminated!
-      elsif subscription.pending?
+      if subscription.pending?
         subscription.mark_as_canceled!
       elsif !subscription.terminated?
         subscription.mark_as_terminated!
+
+        if subscription.should_sync_hubspot_subscription?
+          Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob.perform_later(subscription:)
+        end
 
         if subscription.plan.pay_in_advance? && pay_in_advance_invoice_issued?
           # NOTE: As subscription was payed in advance and terminated before the end of the period,
@@ -26,7 +28,7 @@ module Subscriptions
           credit_note_result = CreditNotes::CreateFromTermination.new(
             subscription:,
             reason: 'order_cancellation',
-            upgrade:,
+            upgrade:
           ).call
           credit_note_result.raise_if_error!
         end
@@ -38,7 +40,12 @@ module Subscriptions
       end
 
       # NOTE: Pending next subscription should be canceled as well
-      subscription.next_subscription&.mark_as_canceled!
+      next_subscription = subscription.next_subscription
+      next_subscription&.mark_as_canceled!
+
+      if next_subscription&.should_sync_hubspot_subscription?
+        Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob.perform_later(subscription: next_subscription)
+      end
 
       # NOTE: Wait to ensure job is performed at the end of the database transaction.
       # See https://github.com/getlago/lago-api/blob/main/app/services/subscriptions/create_service.rb#L46.
@@ -58,7 +65,15 @@ module Subscriptions
 
       ActiveRecord::Base.transaction do
         subscription.mark_as_terminated!(rotation_date)
+
+        if subscription.should_sync_hubspot_subscription?
+          Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob.perform_later(subscription:)
+        end
+
         next_subscription.mark_as_active!(rotation_date)
+        if next_subscription.should_sync_hubspot_subscription?
+          Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob.perform_later(next_subscription)
+        end
       end
 
       # NOTE: Create an invoice for the terminated subscription
@@ -71,6 +86,7 @@ module Subscriptions
         [subscription]
       end
       BillSubscriptionJob.perform_later(billable_subscriptions, timestamp, invoicing_reason: :upgrading)
+      BillNonInvoiceableFeesJob.perform_later([subscription], rotation_date) # Ignore next subscription since there can't be events
 
       SendWebhookJob.perform_later('subscription.terminated', subscription)
       SendWebhookJob.perform_later('subscription.started', next_subscription)
@@ -93,13 +109,18 @@ module Subscriptions
         BillSubscriptionJob.set(wait: 2.seconds).perform_later(
           [subscription],
           subscription.terminated_at,
-          invoicing_reason: :subscription_terminating,
+          invoicing_reason: :subscription_terminating
         )
+        BillNonInvoiceableFeesJob.set(wait: 2.seconds).perform_later([subscription], subscription.terminated_at)
       else
         BillSubscriptionJob.perform_now(
           [subscription],
           subscription.terminated_at,
-          invoicing_reason: :subscription_terminating,
+          invoicing_reason: :subscription_terminating
+        )
+        BillNonInvoiceableFeesJob.perform_now(
+          [subscription],
+          subscription.terminated_at
         )
       end
     end
@@ -119,7 +140,7 @@ module Subscriptions
       dates_service = Subscriptions::DatesService.new_instance(
         duplicate,
         beginning_of_period,
-        current_usage: false,
+        current_usage: false
       )
 
       boundaries = {
@@ -127,7 +148,7 @@ module Subscriptions
         to_datetime: dates_service.to_datetime,
         charges_from_datetime: dates_service.charges_from_datetime,
         charges_to_datetime: dates_service.charges_to_datetime,
-        charges_duration: dates_service.charges_duration_in_days,
+        charges_duration: dates_service.charges_duration_in_days
       }
 
       InvoiceSubscription.matching?(subscription, boundaries, recurring: false)
@@ -137,7 +158,7 @@ module Subscriptions
       dates_service = Subscriptions::DatesService.new_instance(
         subscription_dup,
         subscription.terminated_at,
-        current_usage: false,
+        current_usage: false
       )
 
       dates_service.previous_beginning_of_period(current_period: true).to_datetime

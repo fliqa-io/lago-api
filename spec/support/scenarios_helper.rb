@@ -25,7 +25,7 @@ module ScenariosHelper
   def fetch_current_usage(customer:, subscription: customer.subscriptions.first)
     get_with_token(
       organization,
-      "/api/v1/customers/#{customer.external_id}/current_usage?external_subscription_id=#{subscription.external_id}",
+      "/api/v1/customers/#{customer.external_id}/current_usage?external_subscription_id=#{subscription.external_id}"
     )
   end
 
@@ -69,6 +69,29 @@ module ScenariosHelper
     put_with_token(organization, "/api/v1/invoices/#{invoice.id}", {invoice: params})
   end
 
+  def create_one_off_invoice(customer, addons)
+    create_invoice_params = {
+      external_customer_id: customer.external_id,
+      currency: "EUR",
+      fees: [],
+      timestamp: Time.zone.now.to_i
+    }
+    addons.each do |fee|
+      fee_addon_params = {
+        add_on_id: fee.id,
+        add_on_code: fee.code,
+        name: fee.name,
+        units: 1,
+        unit_amount_cents: fee.amount_cents,
+        tax_codes: [
+          tax.code
+        ]
+      }
+      create_invoice_params[:fees].push(fee_addon_params)
+    end
+    post_with_token(organization, "/api/v1/invoices", {invoice: create_invoice_params})
+  end
+
   ### Coupons
 
   def create_coupon(params)
@@ -89,6 +112,12 @@ module ScenariosHelper
 
   def create_wallet(params)
     post_with_token(organization, '/api/v1/wallets', {wallet: params})
+    perform_all_enqueued_jobs
+  end
+
+  def create_wallet_transaction(params)
+    post_with_token(organization, '/api/v1/wallet_transactions', {wallet_transaction: params})
+    perform_all_enqueued_jobs
   end
 
   ### Events
@@ -109,6 +138,20 @@ module ScenariosHelper
     post_with_token(organization, '/api/v1/credit_notes/estimate', {credit_note: params})
   end
 
+  ### Payment methods
+
+  def setup_stripe_for(customer:)
+    stripe_provider = create(:stripe_provider, organization:)
+    create(:stripe_customer, customer_id: customer.id, payment_provider: stripe_provider)
+    customer.update!(payment_provider: 'stripe', payment_provider_code: stripe_provider.code)
+  end
+
+  ### Fees
+
+  def update_fee(fee, params)
+    put_with_token(organization, "/api/v1/fees/#{fee.id}", params)
+  end
+
   # This performs any enqueued-jobs, and continues doing so until the queue is empty.
   # Lots of the jobs enqueue other jobs as part of their work, and this ensures that
   # everything that's supposed to happen, happens.
@@ -127,6 +170,17 @@ module ScenariosHelper
 
   def perform_invoices_refresh
     Clock::RefreshDraftInvoicesJob.perform_later
+    perform_all_enqueued_jobs
+  end
+
+  def perform_finalize_refresh
+    Clock::FinalizeInvoicesJob.perform_later
+    perform_all_enqueued_jobs
+  end
+
+  def perform_usage_update
+    Clock::ComputeAllDailyUsagesJob.perform_later
+    Clock::RefreshLifetimeUsagesJob.perform_later
     perform_all_enqueued_jobs
   end
 end

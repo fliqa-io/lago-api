@@ -57,17 +57,16 @@ module Events
 
         attr_reader :store
 
-        delegate :events, :charges_duration, :sanitized_property_name, :sanitized_numeric_property, to: :store
+        delegate :events, :charges_duration, :sanitized_property_name, to: :store
 
         def events_cte_sql
-          <<-SQL
+          <<~SQL
             WITH events_data AS (
               (#{initial_value_sql})
               UNION ALL
               (#{
-                events
-                  .select("timestamp, #{sanitized_numeric_property} AS difference")
-                  .group(Events::Stores::ClickhouseStore::DEDUPLICATION_GROUP)
+                events(ordered: true)
+                  .select("timestamp, events_enriched.decimal_value AS difference")
                   .to_sql
               })
               UNION ALL
@@ -124,9 +123,8 @@ module Events
               (#{grouped_initial_value_sql(initial_values)})
               UNION ALL
               (#{
-                events
-                  .select("#{groups.join(", ")}, timestamp, #{sanitized_numeric_property} AS difference")
-                  .group(Events::Stores::ClickhouseStore::DEDUPLICATION_GROUP)
+                events(ordered: true)
+                  .select("#{groups.join(", ")}, timestamp, events_enriched.decimal_value AS difference")
                   .to_sql
               })
               UNION ALL
@@ -143,9 +141,9 @@ module Events
 
             [
               groups,
-              'toDateTime64(:from_datetime, 5, \'UTC\') AS timestamp',
-              "toDecimal128(#{initial_value[:value]}, :decimal_scale) AS difference",
-            ].flatten.join(', ')
+              "toDateTime64(:from_datetime, 5, 'UTC') AS timestamp",
+              "toDecimal128(#{initial_value[:value]}, :decimal_scale) AS difference"
+            ].flatten.join(", ")
           end
 
           <<-SQL
@@ -166,8 +164,8 @@ module Events
             [
               groups,
               "toDateTime64(:to_datetime, 5, 'UTC') AS timestamp",
-              'toDecimal128(0, :decimal_scale) AS difference',
-            ].flatten.join(', ')
+              "toDecimal128(0, :decimal_scale) AS difference"
+            ].flatten.join(", ")
           end
 
           <<-SQL
@@ -202,7 +200,7 @@ module Events
         end
 
         def group_names
-          @group_names ||= store.grouped_by.map.with_index { |_, index| "g_#{index}" }.join(', ')
+          @group_names ||= store.grouped_by.map.with_index { |_, index| "g_#{index}" }.join(", ")
         end
       end
     end

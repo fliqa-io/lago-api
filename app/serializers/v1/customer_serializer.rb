@@ -7,6 +7,9 @@ module V1
         lago_id: model.id,
         external_id: model.external_id,
         name: model.name,
+        firstname: model.firstname,
+        lastname: model.lastname,
+        customer_type: model.customer_type,
         sequential_id: model.sequential_id,
         slug: model.slug,
         created_at: model.created_at.iso8601,
@@ -29,13 +32,17 @@ module V1
         applicable_timezone: model.applicable_timezone,
         net_payment_term: model.net_payment_term,
         external_salesforce_id: model.external_salesforce_id,
+        finalize_zero_amount_invoice: model.finalize_zero_amount_invoice,
         billing_configuration:,
-      }.merge(legacy_values.except(:billing_configuration))
+        shipping_address: model.shipping_address,
+        skip_invoice_custom_sections: model.skip_invoice_custom_sections
+      }
 
       payload = payload.merge(metadata)
       payload = payload.merge(taxes) if include?(:taxes)
       payload = payload.merge(vies_check) if include?(:vies_check)
       payload = payload.merge(integration_customers) if include?(:integration_customers)
+      payload = payload.merge(applicable_invoice_custom_sections) if include?(:applicable_invoice_custom_sections)
 
       payload
     end
@@ -46,7 +53,7 @@ module V1
       ::CollectionSerializer.new(
         model.metadata,
         ::V1::Customers::MetadataSerializer,
-        collection_name: 'metadata',
+        collection_name: 'metadata'
       ).serialize
     end
 
@@ -55,28 +62,23 @@ module V1
         invoice_grace_period: model.invoice_grace_period,
         payment_provider: model.payment_provider,
         payment_provider_code: model.payment_provider_code,
-        vat_rate: model.vat_rate,
-        document_locale: model.document_locale,
-      }.merge(legacy_values[:billing_configuration])
+        document_locale: model.document_locale
+      }
 
       case model.payment_provider&.to_sym
       when :stripe
         configuration[:provider_customer_id] = model.stripe_customer&.provider_customer_id
         configuration[:provider_payment_methods] = model.stripe_customer&.provider_payment_methods
-        configuration.merge!(model.stripe_customer&.settings || {})
+        configuration.merge!(model.stripe_customer&.settings&.symbolize_keys || {})
       when :gocardless
         configuration[:provider_customer_id] = model.gocardless_customer&.provider_customer_id
-        configuration.merge!(model.gocardless_customer&.settings || {})
+        configuration.merge!(model.gocardless_customer&.settings&.symbolize_keys || {})
       when :adyen
         configuration[:provider_customer_id] = model.adyen_customer&.provider_customer_id
-        configuration.merge!(model.adyen_customer&.settings || {})
+        configuration.merge!(model.adyen_customer&.settings&.symbolize_keys || {})
       end
 
       configuration
-    end
-
-    def legacy_values
-      @legacy_values ||= ::V1::Legacy::CustomerSerializer.new(model).serialize
     end
 
     def taxes
@@ -87,7 +89,7 @@ module V1
       vies_value = options.fetch(:vies_check)
 
       {
-        vies_check: vies_value.is_a?(Hash) ? vies_value : {valid: false},
+        vies_check: vies_value.is_a?(Hash) ? vies_value : {valid: false}
       }
     end
 
@@ -95,7 +97,15 @@ module V1
       ::CollectionSerializer.new(
         model.integration_customers,
         ::V1::IntegrationCustomerSerializer,
-        collection_name: 'integration_customers',
+        collection_name: 'integration_customers'
+      ).serialize
+    end
+
+    def applicable_invoice_custom_sections
+      ::CollectionSerializer.new(
+        model.applicable_invoice_custom_sections,
+        ::V1::InvoiceCustomSectionSerializer,
+        collection_name: 'applicable_invoice_custom_sections'
       ).serialize
     end
   end

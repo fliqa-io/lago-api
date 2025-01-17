@@ -16,67 +16,30 @@ RSpec.describe BillableMetrics::UpdateService, type: :service do
       description: 'New metric description',
       aggregation_type: 'sum_agg',
       field_name: 'field_value',
+      expression: '1 + 3',
+      rounding_function: 'ceil',
+      rounding_precision: 2
     }.tap do |p|
-      p[:group] = group unless group.nil?
       p[:filters] = filters unless filters.nil?
     end
   end
-  let(:group) { nil }
   let(:filters) { nil }
 
   describe '#call' do
-    it 'updates the billable metric' do
+    it 'updates the billable metric', aggregate_failures: true do
       result = update_service.call
+      expect(result).to be_success
 
-      aggregate_failures do
-        expect(result).to be_success
-
-        metric = result.billable_metric
-        expect(metric.id).to eq(billable_metric.id)
-        expect(metric.name).to eq('New Metric')
-        expect(metric.code).to eq('new_metric')
-        expect(metric.aggregation_type).to eq('sum_agg')
-      end
-    end
-
-    context 'with group parameter' do
-      let(:group) do
-        {
-          key: 'cloud',
-          values: [
-            {name: 'AWS', key: 'region', values: %w[usa europe]},
-            {name: 'Google', key: 'region', values: ['usa']},
-          ],
-        }
-      end
-
-      it 'updates billable metric\'s group' do
-        expect { update_service.call }.to change { billable_metric.active_groups.reload.count }.from(0).to(5)
-      end
-
-      context 'with empty group' do
-        let(:group) { {} }
-
-        before { create(:group, billable_metric:) }
-
-        it 'updates billable metric\'s group' do
-          expect { update_service.call }.to change { billable_metric.active_groups.reload.count }.from(1).to(0)
-        end
-      end
-
-      context 'with invalid group' do
-        let(:group) { {key: 1} }
-
-        it 'returns an error if group is invalid' do
-          result = update_service.call
-
-          aggregate_failures do
-            expect(result).not_to be_success
-            expect(result.error).to be_a(BaseService::ValidationFailure)
-            expect(result.error.messages[:group]).to eq(['value_is_invalid'])
-          end
-        end
-      end
+      metric = result.billable_metric
+      expect(metric).to have_attributes(
+        id: billable_metric.id,
+        name: 'New Metric',
+        code: 'new_metric',
+        aggregation_type: 'sum_agg',
+        rounding_function: 'ceil',
+        rounding_precision: 2,
+        expression: '1 + 3'
+      )
     end
 
     context 'with filters arguments' do
@@ -84,8 +47,8 @@ RSpec.describe BillableMetrics::UpdateService, type: :service do
         [
           {
             key: 'cloud',
-            values: %w[aws google],
-          },
+            values: %w[aws google]
+          }
         ]
       end
 
@@ -100,7 +63,7 @@ RSpec.describe BillableMetrics::UpdateService, type: :service do
           name: nil,
           code: 'new_metric',
           description: 'New metric description',
-          aggregation_type: 'count_agg',
+          aggregation_type: 'count_agg'
         }
       end
 
@@ -146,7 +109,7 @@ RSpec.describe BillableMetrics::UpdateService, type: :service do
 
       before { charge }
 
-      it 'updates only name and description' do
+      it 'updates only name and description', aggregate_failures: true do
         result = update_service.call
 
         aggregate_failures do
@@ -154,13 +117,15 @@ RSpec.describe BillableMetrics::UpdateService, type: :service do
 
           expect(result.billable_metric).to have_attributes(
             name: 'New Metric',
-            description: 'New metric description',
+            description: 'New metric description'
           )
 
           expect(result.billable_metric).not_to have_attributes(
             code: 'new_metric',
             aggregation_type: 'sum_agg',
             field_name: 'field_value',
+            rounding_function: 'ceil',
+            rounding_precision: 2
           )
         end
       end

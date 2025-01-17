@@ -5,7 +5,9 @@ require 'rails_helper'
 RSpec.describe Api::V1::CouponsController, type: :request do
   let(:organization) { create(:organization) }
 
-  describe 'create' do
+  describe 'POST /api/v1/coupons' do
+    subject { post_with_token(organization, '/api/v1/coupons', {coupon: create_params}) }
+
     let(:billable_metric) { create(:billable_metric, organization:) }
     let(:expiration_at) { Time.current + 15.days }
 
@@ -21,13 +23,15 @@ RSpec.describe Api::V1::CouponsController, type: :request do
         expiration_at:,
         reusable: false,
         applies_to: {
-          billable_metric_codes: [billable_metric.code],
-        },
+          billable_metric_codes: [billable_metric.code]
+        }
       }
     end
 
+    include_examples 'requires API permission', 'coupon', 'write'
+
     it 'creates a coupon' do
-      post_with_token(organization, '/api/v1/coupons', {coupon: create_params})
+      subject
 
       expect(response).to have_http_status(:success)
       expect(json[:coupon][:lago_id]).to be_present
@@ -39,28 +43,16 @@ RSpec.describe Api::V1::CouponsController, type: :request do
       expect(json[:coupon][:limited_billable_metrics]).to eq(true)
       expect(json[:coupon][:billable_metric_codes].first).to eq(billable_metric.code)
     end
-
-    context 'with expiration date input' do
-      before do
-        create_params.except!(:expiration_at)
-        create_params[:expiration_date] = expiration_at.to_date
-      end
-
-      it 'creates a coupon' do
-        post_with_token(organization, '/api/v1/coupons', {coupon: create_params})
-
-        expect(response).to have_http_status(:success)
-        expect(json[:coupon][:lago_id]).to be_present
-        expect(json[:coupon][:code]).to eq(create_params[:code])
-        expect(json[:coupon][:name]).to eq(create_params[:name])
-        expect(json[:coupon][:expiration_at]).to eq(expiration_at.end_of_day.iso8601)
-      end
-    end
   end
 
-  describe 'update' do
+  describe 'PUT /api/v1/coupons/:code' do
+    subject do
+      put_with_token(organization, "/api/v1/coupons/#{coupon_code}", {coupon: update_params})
+    end
+
     let(:coupon) { create(:coupon, organization:) }
     let(:code) { 'coupon_code' }
+    let(:coupon_code) { coupon.code }
     let(:expiration_at) { Time.current + 15.days }
     let(:update_params) do
       {
@@ -71,16 +63,14 @@ RSpec.describe Api::V1::CouponsController, type: :request do
         amount_cents: 123,
         amount_currency: 'EUR',
         expiration: 'time_limit',
-        expiration_at:,
+        expiration_at:
       }
     end
 
+    include_examples 'requires API permission', 'coupon', 'write'
+
     it 'updates a coupon' do
-      put_with_token(
-        organization,
-        "/api/v1/coupons/#{coupon.code}",
-        {coupon: update_params},
-      )
+      subject
 
       expect(response).to have_http_status(:success)
       expect(json[:coupon][:lago_id]).to eq(coupon.id)
@@ -88,60 +78,36 @@ RSpec.describe Api::V1::CouponsController, type: :request do
       expect(json[:coupon][:expiration_at]).to eq(expiration_at.iso8601)
     end
 
-    context 'with expiration date input' do
-      before do
-        update_params.except!(:expiration_at)
-        update_params[:expiration_date] = expiration_at.to_date
-      end
-
-      it 'creates a coupon' do
-        put_with_token(
-          organization,
-          "/api/v1/coupons/#{coupon.code}",
-          {coupon: update_params},
-        )
-
-        expect(response).to have_http_status(:success)
-        expect(json[:coupon][:lago_id]).to eq(coupon.id)
-        expect(json[:coupon][:code]).to eq(update_params[:code])
-        expect(json[:coupon][:expiration_at]).to eq(expiration_at.end_of_day.iso8601)
-      end
-    end
-
     context 'when coupon does not exist' do
-      it 'returns not_found error' do
-        put_with_token(organization, '/api/v1/coupons/invalid', {coupon: update_params})
+      let(:coupon_code) { SecureRandom.uuid }
 
+      it 'returns not_found error' do
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
 
     context 'when coupon code already exists in organization scope (validation error)' do
-      let(:coupon2) { create(:coupon, organization:) }
-      let(:code) { coupon2.code }
-
-      before { coupon2 }
+      let!(:another_coupon) { create(:coupon, organization:) }
+      let(:code) { another_coupon.code }
 
       it 'returns unprocessable_entity error' do
-        put_with_token(
-          organization,
-          "/api/v1/coupons/#{coupon.code}",
-          {coupon: update_params},
-        )
-
+        subject
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
   end
 
-  describe 'show' do
+  describe 'GET /api/v1/coupons/:code' do
+    subject { get_with_token(organization, "/api/v1/coupons/#{coupon_code}") }
+
     let(:coupon) { create(:coupon, organization:) }
+    let(:coupon_code) { coupon.code }
+
+    include_examples 'requires API permission', 'coupon', 'read'
 
     it 'returns a coupon' do
-      get_with_token(
-        organization,
-        "/api/v1/coupons/#{coupon.code}",
-      )
+      subject
 
       expect(response).to have_http_status(:success)
       expect(json[:coupon][:lago_id]).to eq(coupon.id)
@@ -149,29 +115,29 @@ RSpec.describe Api::V1::CouponsController, type: :request do
     end
 
     context 'when coupon does not exist' do
-      it 'returns not found' do
-        get_with_token(
-          organization,
-          '/api/v1/coupons/555',
-        )
+      let(:coupon_code) { SecureRandom.uuid }
 
+      it 'returns not found' do
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
   end
 
-  describe 'destroy' do
-    let(:coupon) { create(:coupon, organization:) }
+  describe 'DELETE /api/v1/coupons/:code' do
+    subject { delete_with_token(organization, "/api/v1/coupons/#{coupon_code}") }
 
-    before { coupon }
+    let!(:coupon) { create(:coupon, organization:) }
+    let(:coupon_code) { coupon.code }
+
+    include_examples 'requires API permission', 'coupon', 'write'
 
     it 'deletes a coupon' do
-      expect { delete_with_token(organization, "/api/v1/coupons/#{coupon.code}") }
-        .to change(Coupon, :count).by(-1)
+      expect { subject }.to change(Coupon, :count).by(-1)
     end
 
     it 'returns deleted coupon' do
-      delete_with_token(organization, "/api/v1/coupons/#{coupon.code}")
+      subject
 
       expect(response).to have_http_status(:success)
       expect(json[:coupon][:lago_id]).to eq(coupon.id)
@@ -179,21 +145,25 @@ RSpec.describe Api::V1::CouponsController, type: :request do
     end
 
     context 'when coupon does not exist' do
-      it 'returns not_found error' do
-        delete_with_token(organization, '/api/v1/coupons/invalid')
+      let(:coupon_code) { SecureRandom.uuid }
 
+      it 'returns not_found error' do
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
   end
 
-  describe 'index' do
-    let(:coupon) { create(:coupon, organization:) }
+  describe 'GET /api/v1/coupons' do
+    subject { get_with_token(organization, '/api/v1/coupons', params) }
 
-    before { coupon }
+    let!(:coupon) { create(:coupon, organization:) }
+    let(:params) { {} }
+
+    include_examples 'requires API permission', 'coupon', 'read'
 
     it 'returns coupons' do
-      get_with_token(organization, '/api/v1/coupons')
+      subject
 
       expect(response).to have_http_status(:success)
       expect(json[:coupons].count).to eq(1)
@@ -202,12 +172,12 @@ RSpec.describe Api::V1::CouponsController, type: :request do
     end
 
     context 'with pagination' do
-      let(:coupon2) { create(:coupon, organization:) }
+      let(:params) { {page: 1, per_page: 1} }
 
-      before { coupon2 }
+      before { create(:coupon, organization:) }
 
       it 'returns coupons with correct meta data' do
-        get_with_token(organization, '/api/v1/coupons?page=1&per_page=1')
+        subject
 
         expect(response).to have_http_status(:success)
         expect(json[:coupons].count).to eq(1)

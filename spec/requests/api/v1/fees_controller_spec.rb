@@ -5,31 +5,35 @@ require 'rails_helper'
 RSpec.describe Api::V1::FeesController, type: :request do
   let(:organization) { create(:organization) }
 
-  describe 'GET /fees/:id' do
+  describe 'GET /api/v1/fees/:id' do
+    subject { get_with_token(organization, "/api/v1/fees/#{fee_id}") }
+
     let(:customer) { create(:customer, organization:) }
     let(:subscription) { create(:subscription, customer:) }
     let(:fee) { create(:fee, subscription:, invoice: nil) }
+    let(:fee_id) { fee.id }
+
+    include_examples 'requires API permission', 'fee', 'read'
 
     it 'returns a fee' do
-      get_with_token(organization, "/api/v1/fees/#{fee.id}")
+      subject
 
       aggregate_failures do
         expect(response).to have_http_status(:success)
 
         expect(json[:fee]).to include(
           lago_id: fee.id,
-          lago_group_id: fee.group_id,
           amount_cents: fee.amount_cents,
           amount_currency: fee.amount_currency,
           taxes_amount_cents: fee.taxes_amount_cents,
           units: fee.units.to_s,
           events_count: fee.events_count,
-          applied_taxes: [],
+          applied_taxes: []
         )
         expect(json[:fee][:item]).to include(
           type: fee.fee_type,
           code: fee.item_code,
-          name: fee.item_name,
+          name: fee.item_name
         )
       end
     end
@@ -39,34 +43,34 @@ RSpec.describe Api::V1::FeesController, type: :request do
       let(:fee) { create(:add_on_fee, invoice:) }
 
       it 'returns a fee' do
-        get_with_token(organization, "/api/v1/fees/#{fee.id}")
+        subject
 
         aggregate_failures do
           expect(response).to have_http_status(:success)
 
           expect(json[:fee]).to include(
             lago_id: fee.id,
-            lago_group_id: fee.group_id,
             amount_cents: fee.amount_cents,
             amount_currency: fee.amount_currency,
             taxes_amount_cents: fee.taxes_amount_cents,
             units: fee.units.to_s,
             events_count: fee.events_count,
-            applied_taxes: [],
+            applied_taxes: []
           )
           expect(json[:fee][:item]).to include(
             type: fee.fee_type,
             code: fee.item_code,
-            name: fee.item_name,
+            name: fee.item_name
           )
         end
       end
     end
 
-    context 'when fee does not exsits' do
-      it 'returns not found' do
-        get_with_token(organization, '/api/v1/fees/foo')
+    context 'when fee does not exist' do
+      let(:fee_id) { SecureRandom.uuid }
 
+      it 'returns not found' do
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -75,36 +79,39 @@ RSpec.describe Api::V1::FeesController, type: :request do
       let(:fee) { create(:fee) }
 
       it 'returns not found' do
-        get_with_token(organization, "/api/v1/fee/#{fee.id}")
-
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
   end
 
-  describe 'PUT /fees/:id' do
+  describe 'PUT /api/v1/fees/:id' do
+    subject { put_with_token(organization, "/api/v1/fees/#{fee_id}", fee: update_params) }
+
     let(:customer) { create(:customer, organization:) }
     let(:subscription) { create(:subscription, customer:) }
     let(:update_params) { {payment_status: 'succeeded'} }
+    let(:fee_id) { fee.id }
+
     let(:fee) do
       create(:charge_fee, fee_type: 'charge', pay_in_advance: true, subscription:, invoice: nil)
     end
 
     before { fee.charge.update!(invoiceable: false) }
 
+    include_examples 'requires API permission', 'fee', 'write'
+
     it 'updates the fee' do
-      put_with_token(organization, "/api/v1/fees/#{fee.id}", fee: update_params)
+      subject
 
       aggregate_failures do
         expect(response).to have_http_status(:success)
 
         expect(json[:fee]).to include(
           lago_id: fee.reload.id,
-          lago_group_id: fee.group_id,
           amount_cents: fee.amount_cents,
           amount_currency: fee.amount_currency,
           taxes_amount_cents: fee.taxes_amount_cents,
-          vat_amount_cents: fee.taxes_amount_cents,
           units: fee.units.to_s,
           events_count: fee.events_count,
           payment_status: fee.payment_status,
@@ -113,45 +120,98 @@ RSpec.describe Api::V1::FeesController, type: :request do
           failed_at: fee.failed_at&.iso8601,
           refunded_at: fee.refunded_at&.iso8601,
           amount_details: fee.amount_details,
-          applied_taxes: [],
+          applied_taxes: []
         )
         expect(json[:fee][:item]).to include(
           type: fee.fee_type,
           code: fee.item_code,
-          name: fee.item_name,
+          name: fee.item_name
         )
       end
     end
 
     context 'when fee does not exist' do
-      it 'returns not found' do
-        put_with_token(organization, '/api/v1/fees/foo', fee: update_params)
+      let(:fee_id) { SecureRandom.uuid }
 
+      it 'returns not found' do
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
   end
 
-  describe 'GET /fees' do
+  describe 'DELETE /api/v1/fees/:id' do
+    subject { delete_with_token(organization, "/api/v1/fees/#{fee_id}") }
+
     let(:customer) { create(:customer, organization:) }
     let(:subscription) { create(:subscription, customer:) }
-    let(:fee) { create(:fee, subscription:, invoice: nil) }
+    let(:update_params) { {payment_status: 'succeeded'} }
+    let(:fee_id) { fee.id }
 
-    before { fee }
+    context 'when fee exists' do
+      let(:fee) do
+        create(:charge_fee, fee_type: 'charge', pay_in_advance: true, subscription:, invoice:)
+      end
+      let(:invoice) { nil }
 
-    it 'returns a list of fees' do
-      get_with_token(organization, '/api/v1/fees')
+      include_examples 'requires API permission', 'fee', 'write'
 
-      aggregate_failures do
-        expect(response).to have_http_status(:success)
+      context 'when fee does not attached to an invoice' do
+        it 'deletes the fee' do
+          subject
+          expect(response).to have_http_status(:ok)
+        end
+      end
 
-        expect(json[:fees].count).to eq(1)
+      context 'when fee is attached to an invoice' do
+        let(:invoice) { create(:invoice, organization:, customer:) }
+
+        it 'dont delete the fee' do
+          subject
+          expect(response).to have_http_status(:method_not_allowed)
+        end
+      end
+    end
+
+    context 'when fee does not exist' do
+      let(:fee_id) { SecureRandom.uuid }
+
+      it 'returns not found' do
+        subject
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+  end
+
+  describe 'GET /api/v1/fees' do
+    subject { get_with_token(organization, '/api/v1/fees', params) }
+
+    let(:customer) { create(:customer, organization:) }
+    let(:subscription) { create(:subscription, customer:) }
+    let!(:fee) { create(:fee, subscription:, invoice: nil) }
+
+    context 'without params' do
+      let(:params) { {} }
+
+      include_examples 'requires API permission', 'fee', 'read'
+
+      it 'returns a list of fees' do
+        subject
+
+        aggregate_failures do
+          expect(response).to have_http_status(:success)
+
+          expect(json[:fees].count).to eq(1)
+          expect(json[:fees].first[:lago_id]).to eq(fee.id)
+        end
       end
     end
 
     context 'with an invalid filter' do
+      let(:params) { {fee_type: 'invalid_filter'} }
+
       it 'returns an error response' do
-        get_with_token(organization, '/api/v1/fees', fee_type: 'foo_bar')
+        subject
 
         aggregate_failures do
           expect(response).to have_http_status(:unprocessable_entity)

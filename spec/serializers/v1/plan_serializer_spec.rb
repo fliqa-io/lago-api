@@ -3,14 +3,21 @@
 require 'rails_helper'
 
 RSpec.describe ::V1::PlanSerializer do
-  subject(:serializer) { described_class.new(plan, root_name: 'plan', includes: %i[charges taxes minimum_commitment]) }
+  subject(:serializer) do
+    described_class.new(
+      plan,
+      root_name: 'plan',
+      includes: %i[charges taxes minimum_commitment usage_thresholds]
+    )
+  end
 
   let(:plan) { create(:plan) }
   let(:customer) { create(:customer, organization: plan.organization) }
   let(:subscription) { create(:subscription, customer:, plan:) }
   let(:charge) { create(:standard_charge, plan:) }
+  let(:usage_threshold) { create(:usage_threshold, plan:) }
 
-  before { subscription && charge }
+  before { subscription && charge && usage_threshold }
 
   context 'when plan has one minimium commitment' do
     let(:commitment) { create(:commitment, plan:) }
@@ -37,16 +44,24 @@ RSpec.describe ::V1::PlanSerializer do
         'trial_period' => plan.trial_period,
         'pay_in_advance' => plan.pay_in_advance,
         'bill_charges_monthly' => plan.bill_charges_monthly,
-        'customers_count' => 2,
-        'active_subscriptions_count' => 2,
+        'customers_count' => 0,
+        'active_subscriptions_count' => 0,
         'draft_invoices_count' => 0,
         'parent_id' => nil,
-        'taxes' => [],
+        'taxes' => []
       )
 
       expect(result['plan']['charges'].first).to include(
-        'lago_id' => charge.id,
-        'group_properties' => [],
+        'lago_id' => charge.id
+      )
+
+      expect(result['plan']['usage_thresholds'].first).to include(
+        'lago_id' => usage_threshold.id,
+        'threshold_display_name' => usage_threshold.threshold_display_name,
+        'amount_cents' => usage_threshold.amount_cents,
+        'recurring' => usage_threshold.recurring?,
+        'created_at' => usage_threshold.created_at.iso8601,
+        'updated_at' => usage_threshold.updated_at.iso8601
       )
 
       expect(result['plan']['minimum_commitment']).to include(
@@ -57,10 +72,10 @@ RSpec.describe ::V1::PlanSerializer do
         'interval' => commitment.plan.interval,
         'created_at' => commitment.created_at.iso8601,
         'updated_at' => commitment.updated_at.iso8601,
-        'taxes' => [],
+        'taxes' => []
       )
       expect(result['plan']['minimum_commitment']).not_to include(
-        'commitment_type' => 'minimum_commitment',
+        'commitment_type' => 'minimum_commitment'
       )
     end
   end
@@ -86,16 +101,24 @@ RSpec.describe ::V1::PlanSerializer do
         'trial_period' => plan.trial_period,
         'pay_in_advance' => plan.pay_in_advance,
         'bill_charges_monthly' => plan.bill_charges_monthly,
-        'customers_count' => 2,
-        'active_subscriptions_count' => 2,
+        'customers_count' => 0,
+        'active_subscriptions_count' => 0,
         'draft_invoices_count' => 0,
         'parent_id' => nil,
-        'taxes' => [],
+        'taxes' => []
       )
 
       expect(result['plan']['charges'].first).to include(
-        'lago_id' => charge.id,
-        'group_properties' => [],
+        'lago_id' => charge.id
+      )
+
+      expect(result['plan']['usage_thresholds'].first).to include(
+        'lago_id' => usage_threshold.id,
+        'threshold_display_name' => usage_threshold.threshold_display_name,
+        'amount_cents' => usage_threshold.amount_cents,
+        'recurring' => usage_threshold.recurring?,
+        'created_at' => usage_threshold.created_at.iso8601,
+        'updated_at' => usage_threshold.updated_at.iso8601
       )
 
       expect(result['plan']['minimum_commitment']).to be_nil

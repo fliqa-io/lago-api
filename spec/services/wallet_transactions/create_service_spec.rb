@@ -16,7 +16,7 @@ RSpec.describe WalletTransactions::CreateService, type: :service do
       balance_cents: 1000,
       credits_balance: 10.0,
       ongoing_balance_cents: 1000,
-      credits_ongoing_balance: 10.0,
+      credits_ongoing_balance: 10.0
     )
   end
 
@@ -34,7 +34,7 @@ RSpec.describe WalletTransactions::CreateService, type: :service do
         paid_credits:,
         granted_credits:,
         voided_credits:,
-        source: :manual,
+        source: :manual
       }
     end
 
@@ -80,6 +80,28 @@ RSpec.describe WalletTransactions::CreateService, type: :service do
       end.to have_enqueued_job(SendWebhookJob).thrice.with('wallet_transaction.created', WalletTransaction)
     end
 
+    context 'with valid metadata' do
+      let(:metadata) { [{'key' => 'valid_value', 'value' => 'also_valid'}] }
+      let(:params) do
+        {
+          wallet_id: wallet.id,
+          paid_credits:,
+          granted_credits:,
+          voided_credits:,
+          source: :manual,
+          metadata: metadata
+        }
+      end
+
+      it 'processes the transaction normally and includes the metadata' do
+        expect(create_service).to be_success
+        transactions = WalletTransaction.where(wallet_id: wallet.id)
+        expect(transactions.first.metadata).to include('key' => 'valid_value', 'value' => 'also_valid')
+        expect(transactions.second.metadata).to include('key' => 'valid_value', 'value' => 'also_valid')
+        expect(transactions.third.metadata).to include('key' => 'valid_value', 'value' => 'also_valid')
+      end
+    end
+
     context 'with validation error' do
       let(:paid_credits) { '-15.00' }
 
@@ -88,6 +110,15 @@ RSpec.describe WalletTransactions::CreateService, type: :service do
 
         expect(result).not_to be_success
         expect(result.error.messages[:paid_credits]).to eq(['invalid_paid_credits'])
+      end
+    end
+
+    context 'with decimal value' do
+      let(:paid_credits) { '4.399999' }
+
+      it 'creates wallet transaction with floored value' do
+        result = create_service
+        expect(result.wallet_transactions.first.credit_amount).to eq(4.39999)
       end
     end
   end

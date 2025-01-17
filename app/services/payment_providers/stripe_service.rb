@@ -7,7 +7,7 @@ module PaymentProviders
         organization_id: args[:organization_id],
         code: args[:code],
         id: args[:id],
-        payment_provider_type: 'stripe',
+        payment_provider_type: 'stripe'
       )
 
       stripe_provider = if payment_provider_result.success?
@@ -15,11 +15,12 @@ module PaymentProviders
       else
         PaymentProviders::StripeProvider.new(
           organization_id: args[:organization_id],
-          code: args[:code],
+          code: args[:code]
         )
       end
 
       secret_key = stripe_provider.secret_key
+      old_code = stripe_provider.code
 
       stripe_provider.secret_key = args[:secret_key] if args.key?(:secret_key)
       stripe_provider.code = args[:code] if args.key?(:code)
@@ -31,13 +32,10 @@ module PaymentProviders
         unregister_webhook(stripe_provider, secret_key)
 
         PaymentProviders::Stripe::RegisterWebhookJob.perform_later(stripe_provider)
+      end
 
-        # NOTE: ensure existing payment_provider_customers are
-        #       attached to the provider
-        reattach_provider_customers(
-          organization_id: args[:organization_id],
-          stripe_provider:,
-        )
+      if payment_provider_code_changed?(stripe_provider, old_code, args)
+        stripe_provider.customers.update_all(payment_provider_code: args[:code]) # rubocop:disable Rails/SkipsModelValidations
       end
 
       result.stripe_provider = stripe_provider
@@ -49,128 +47,6 @@ module PaymentProviders
     def refresh_webhook(stripe_provider:)
       unregister_webhook(stripe_provider, stripe_provider.secret_key)
       PaymentProviders::Stripe::RegisterWebhookService.call(stripe_provider)
-    end
-
-    def handle_incoming_webhook(organization_id:, params:, signature:, code: nil)
-      organization = Organization.find_by(id: organization_id)
-
-      payment_provider_result = PaymentProviders::FindService.call(
-        organization_id:,
-        code:,
-        payment_provider_type: 'stripe',
-      )
-
-      return payment_provider_result unless payment_provider_result.success?
-
-      event = ::Stripe::Webhook.construct_event(
-        params,
-        signature,
-        payment_provider_result.payment_provider&.webhook_secret,
-      )
-
-      PaymentProviders::Stripe::HandleEventJob.perform_later(
-        organization:,
-        event: event.to_json,
-      )
-
-      result.event = event
-      result
-    rescue JSON::ParserError
-      result.service_failure!(code: 'webhook_error', message: 'Invalid payload')
-    rescue ::Stripe::SignatureVerificationError
-      result.service_failure!(code: 'webhook_error', message: 'Invalid signature')
-    end
-
-    def handle_event(organization:, event_json:)
-      event = ::Stripe::Event.construct_from(JSON.parse(event_json))
-      unless PaymentProviders::StripeProvider::WEBHOOKS_EVENTS.include?(event.type)
-        Rails.logger.warn("Unexpected stripe event type: #{event.type}")
-        return result
-      end
-
-      case event.type
-      when 'setup_intent.succeeded'
-        service = PaymentProviderCustomers::StripeService.new
-
-        result = service
-          .update_provider_default_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: event.data.object.customer,
-            payment_method_id: event.data.object.payment_method,
-            metadata: event.data.object.metadata.to_h.symbolize_keys,
-          )
-        result.raise_if_error!
-
-        result = service
-          .update_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: event.data.object.customer,
-            payment_method_id: event.data.object.payment_method,
-            metadata: event.data.object.metadata.to_h.symbolize_keys,
-          )
-
-        result.raise_if_error! || result
-      when 'customer.updated'
-        payment_method_id = event.data.object.invoice_settings.default_payment_method ||
-          event.data.object.default_source
-
-        result = PaymentProviderCustomers::StripeService
-          .new
-          .update_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: event.data.object.id,
-            payment_method_id:,
-            metadata: event.data.object.metadata.to_h.symbolize_keys,
-          )
-
-        result.raise_if_error! || result
-      when 'charge.succeeded'
-        Invoices::Payments::StripeService
-          .new.update_payment_status(
-            organization_id: organization.id,
-            provider_payment_id: event.data.object.payment_intent,
-            status: 'succeeded',
-            metadata: event.data.object.metadata.to_h.symbolize_keys,
-          )
-      when 'charge.dispute.closed'
-        PaymentProviders::Webhooks::Stripe::ChargeDisputeClosedService.call(
-          organization_id: organization.id,
-          event_json:,
-        )
-      when 'payment_intent.payment_failed', 'payment_intent.succeeded'
-        status = (event.type == 'payment_intent.succeeded') ? 'succeeded' : 'failed'
-
-        Invoices::Payments::StripeService
-          .new.update_payment_status(
-            organization_id: organization.id,
-            provider_payment_id: event.data.object.id,
-            status:,
-            metadata: event.data.object.metadata.to_h.symbolize_keys,
-          )
-      when 'payment_method.detached'
-        result = PaymentProviderCustomers::StripeService
-          .new
-          .delete_payment_method(
-            organization_id: organization.id,
-            stripe_customer_id: event.data.object.customer,
-            payment_method_id: event.data.object.id,
-            metadata: event.data.object.metadata.to_h.symbolize_keys,
-          )
-        result.raise_if_error! || result
-      when 'charge.refund.updated'
-        CreditNotes::Refunds::StripeService
-          .new.update_status(
-            provider_refund_id: event.data.object.id,
-            status: event.data.object.status,
-            metadata: event.data.object.metadata.to_h.symbolize_keys,
-          )
-      end
-    rescue BaseService::NotFoundFailure => e
-      # NOTE: Error with stripe sandbox should be ignord
-      raise if event.livemode
-
-      Rails.logger.warn("Stripe resource not found: #{e.message}. JSON: #{event_json}")
-      BaseService::Result.new # NOTE: Prevents error from being re-raised
     end
 
     private
@@ -189,13 +65,6 @@ module PaymentProviders
       Rails.logger.error(e.backtrace.join("\n"))
 
       Sentry.capture_exception(e)
-    end
-
-    def reattach_provider_customers(organization_id:, stripe_provider:)
-      PaymentProviderCustomers::StripeCustomer
-        .joins(:customer)
-        .where(payment_provider_id: nil, customers: {organization_id:})
-        .update_all(payment_provider_id: stripe_provider.id) # rubocop:disable Rails/SkipsModelValidations
     end
   end
 end

@@ -14,17 +14,28 @@ module WalletTransactions
 
       wallet_transactions = []
       @source = params[:source] || :manual
+      @metadata = params[:metadata] || []
+      invoice_requires_successful_payment = if params.key?(:invoice_requires_successful_payment)
+        ActiveModel::Type::Boolean.new.cast(params[:invoice_requires_successful_payment])
+      else
+        result.current_wallet.invoice_requires_successful_payment
+      end
 
       if params[:paid_credits]
-        transaction = handle_paid_credits(wallet: result.current_wallet, paid_credits: params[:paid_credits])
+        transaction = handle_paid_credits(
+          wallet: result.current_wallet,
+          credits_amount: BigDecimal(params[:paid_credits]).floor(5),
+          invoice_requires_successful_payment:
+        )
         wallet_transactions << transaction
       end
 
       if params[:granted_credits]
         transaction = handle_granted_credits(
           wallet: result.current_wallet,
-          granted_credits: params[:granted_credits],
+          credits_amount: BigDecimal(params[:granted_credits]).floor(5),
           reset_consumed_credits: ActiveModel::Type::Boolean.new.cast(params[:reset_consumed_credits]),
+          invoice_requires_successful_payment:
         )
         wallet_transactions << transaction
       end
@@ -32,16 +43,15 @@ module WalletTransactions
       if params[:voided_credits]
         void_result = WalletTransactions::VoidService.call(
           wallet: result.current_wallet,
-          credits: params[:voided_credits],
-          from_source: source,
+          credits_amount: BigDecimal(params[:voided_credits]).floor(5),
+          from_source: source, metadata:
         )
         wallet_transactions << void_result.wallet_transaction
       end
 
       transactions = wallet_transactions.compact
-      if organization.webhook_endpoints.any?
-        transactions.each { |wt| SendWebhookJob.perform_later('wallet_transaction.created', wt.reload) }
-      end
+
+      transactions.each { |wt| SendWebhookJob.perform_later('wallet_transaction.created', wt.reload) }
 
       result.wallet_transactions = transactions
       result
@@ -49,21 +59,21 @@ module WalletTransactions
 
     private
 
-    attr_reader :organization, :params, :source
+    attr_reader :organization, :params, :source, :metadata
 
-    def handle_paid_credits(wallet:, paid_credits:)
-      paid_credits_amount = BigDecimal(paid_credits)
-
-      return if paid_credits_amount.zero?
+    def handle_paid_credits(wallet:, credits_amount:, invoice_requires_successful_payment:)
+      return if credits_amount.zero?
 
       wallet_transaction = WalletTransaction.create!(
         wallet:,
         transaction_type: :inbound,
-        amount: wallet.rate_amount * paid_credits_amount,
-        credit_amount: paid_credits_amount,
+        amount: wallet.rate_amount * credits_amount,
+        credit_amount: credits_amount,
         status: :pending,
         source:,
         transaction_status: :purchased,
+        invoice_requires_successful_payment:,
+        metadata:
       )
 
       BillPaidCreditJob.perform_later(wallet_transaction, Time.current.to_i)
@@ -71,27 +81,27 @@ module WalletTransactions
       wallet_transaction
     end
 
-    def handle_granted_credits(wallet:, granted_credits:, reset_consumed_credits: false)
-      granted_credits_amount = BigDecimal(granted_credits)
-
-      return if granted_credits_amount.zero?
+    def handle_granted_credits(wallet:, credits_amount:, invoice_requires_successful_payment:, reset_consumed_credits: false)
+      return if credits_amount.zero?
 
       ActiveRecord::Base.transaction do
         wallet_transaction = WalletTransaction.create!(
           wallet:,
           transaction_type: :inbound,
-          amount: wallet.rate_amount * granted_credits_amount,
-          credit_amount: granted_credits_amount,
+          amount: wallet.rate_amount * credits_amount,
+          credit_amount: credits_amount,
           status: :settled,
           settled_at: Time.current,
           source:,
           transaction_status: :granted,
+          invoice_requires_successful_payment:,
+          metadata:
         )
 
         Wallets::Balance::IncreaseService.new(
           wallet:,
-          credits_amount: granted_credits_amount,
-          reset_consumed_credits:,
+          credits_amount:,
+          reset_consumed_credits:
         ).call
 
         wallet_transaction
@@ -101,7 +111,7 @@ module WalletTransactions
     def valid?
       WalletTransactions::ValidateService.new(
         result,
-        **params.merge(organization_id: organization.id),
+        **params.merge(organization_id: organization.id)
       ).valid?
     end
   end

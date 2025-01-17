@@ -10,14 +10,14 @@ RSpec.describe Admin::MembershipsController, type: [:request, :admin] do
     let(:create_params) do
       {
         user_id: user.id,
-        organization_id: organization.id,
+        organization_id: organization.id
       }
     end
 
     it 'creates a membership' do
       admin_post(
         '/admin/memberships',
-        create_params,
+        create_params
       )
 
       aggregate_failures do

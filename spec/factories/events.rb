@@ -9,11 +9,10 @@ FactoryBot.define do
 
     organization_id { create(:organization).id }
 
-    transaction_id { SecureRandom.uuid }
-    code { Faker::Name.name.underscore }
+    transaction_id { "tr_#{SecureRandom.hex}" }
+    code { Faker::Alphanumeric.alphanumeric(number: 10) }
     timestamp { Time.current }
 
-    external_customer_id { customer.external_id }
     external_subscription_id { subscription.external_id }
   end
 
@@ -25,17 +24,16 @@ FactoryBot.define do
         create(
           :subscription,
           customer: source_customer,
-          organization: source_organization,
+          organization: source_organization
         )
       end
     end
 
     organization_id { source_organization.id }
-    external_customer_id { source_customer.external_id }
     external_subscription_id { source_subscription.external_id }
 
-    transaction_id { SecureRandom.uuid }
-    code { Faker::Name.name.underscore }
+    transaction_id { "tr_#{SecureRandom.hex}" }
+    code { Faker::Alphanumeric.alphanumeric(number: 10) }
     timestamp { Time.current }
   end
 end

@@ -25,12 +25,12 @@ module CreditNotes
           amount_cents: adyen_result.response.dig('amount', 'value'),
           amount_currency: adyen_result.response.dig('amount', 'currency'),
           status: 'pending',
-          provider_refund_id: adyen_result.response['pspReference'],
+          provider_refund_id: adyen_result.response['pspReference']
         )
         refund.save!
 
         update_credit_note_status(refund.status)
-        track_refund_status_changed(refund.status)
+        Utils::SegmentTrack.refund_status_changed(refund.status, credit_note.id, organization.id)
 
         result.refund = refund
         result
@@ -46,7 +46,7 @@ module CreditNotes
 
         refund.update!(status:)
         update_credit_note_status(status)
-        track_refund_status_changed(status)
+        Utils::SegmentTrack.refund_status_changed(refund.status, credit_note.id, organization.id)
 
         if status.to_sym == :failed
           deliver_error_webhook(message: 'Payment refund failed', code: nil)
@@ -68,7 +68,7 @@ module CreditNotes
         @client ||= Adyen::Client.new(
           api_key: payment.payment_provider.api_key,
           env: payment.payment_provider.environment,
-          live_url_prefix: payment.payment_provider.live_prefix,
+          live_url_prefix: payment.payment_provider.live_prefix
         )
       end
 
@@ -89,7 +89,7 @@ module CreditNotes
       def create_adyen_refund
         client.checkout.modifications_api.refund_captured_payment(
           Lago::Adyen::Params.new(adyen_refund_params).to_h,
-          payment.provider_payment_id,
+          payment.provider_payment_id
         )
       rescue Adyen::AdyenError => e
         deliver_error_webhook(message: e.msg, code: e.code)
@@ -104,22 +104,20 @@ module CreditNotes
           merchantAccount: payment.payment_provider.merchant_account,
           amount: {
             value: credit_note.refund_amount_cents,
-            currency: credit_note.credit_amount_currency.upcase,
-          },
+            currency: credit_note.credit_amount_currency.upcase
+          }
         }
       end
 
       def deliver_error_webhook(message:, code:)
-        return unless organization.webhook_endpoints.any?
-
         SendWebhookJob.perform_later(
           'credit_note.provider_refund_failure',
           credit_note,
           provider_customer_id: customer.adyen_customer.provider_customer_id,
           provider_error: {
             message:,
-            error_code: code,
-          },
+            error_code: code
+          }
         )
       end
 
@@ -127,18 +125,6 @@ module CreditNotes
         credit_note.refund_status = status
         credit_note.refunded_at = Time.current if credit_note.succeeded?
         credit_note.save!
-      end
-
-      def track_refund_status_changed(status)
-        SegmentTrackJob.perform_later(
-          membership_id: CurrentContext.membership,
-          event: 'refund_status_changed',
-          properties: {
-            organization_id: organization.id,
-            credit_note_id: credit_note.id,
-            refund_status: status,
-          },
-        )
       end
 
       def handle_missing_refund(metadata)

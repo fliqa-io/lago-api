@@ -20,8 +20,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
         {
           external_customer_id: customer.external_id,
           external_id: customer.external_id,
-          plan_code: plan.code,
-        },
+          plan_code: plan.code
+        }
       )
     end
 
@@ -37,9 +37,9 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             'item_id' => '001',
             'key_1' => '2024',
             'key_2' => 'Feb',
-            'key_3' => '08',
-          },
-        },
+            'key_3' => '08'
+          }
+        }
       )
 
       create_event(
@@ -51,9 +51,9 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             'item_id' => '001',
             'key_1' => '2024',
             'key_2' => 'Feb',
-            'key_3' => '06',
-          },
-        },
+            'key_3' => '06'
+          }
+        }
       )
 
       create_event(
@@ -65,9 +65,9 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             'item_id' => '002',
             'key_1' => '2024',
             'key_2' => 'Feb',
-            'key_3' => '06',
-          },
-        },
+            'key_3' => '06'
+          }
+        }
       )
 
       fetch_current_usage(customer:)
@@ -85,8 +85,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
         pay_in_advance: true,
         properties: {
           amount: '29',
-          grouped_by: %w[key_1 key_2 key_3],
-        },
+          grouped_by: %w[key_1 key_2 key_3]
+        }
       )
     end
 
@@ -96,8 +96,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: plan.code,
-          },
+            plan_code: plan.code
+          }
         )
       end
 
@@ -109,14 +109,15 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             code: billable_metric.code,
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
+            timestamp: Time.zone.parse('2024-02-01T01:00:00').to_f,
             properties: {
               'item_id' => '001',
               'operation_type' => 'remove',
               'key_1' => '2024',
               'key_2' => 'Feb',
-              'key_3' => '06',
-            },
-          },
+              'key_3' => '06'
+            }
+          }
         )
 
         expect(Fee.count).to eq(1)
@@ -129,14 +130,15 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             code: billable_metric.code,
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
+            timestamp: Time.zone.parse('2024-02-01T01:00:10').to_f,
             properties: {
               'item_id' => '001',
               'operation_type' => 'add',
               'key_1' => '2024',
               'key_2' => 'Feb',
-              'key_3' => '06',
-            },
-          },
+              'key_3' => '06'
+            }
+          }
         )
 
         expect(Fee.count).to eq(2)
@@ -151,14 +153,15 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             code: billable_metric.code,
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
+            timestamp: Time.zone.parse('2024-02-02T01:00:00').to_f,
             properties: {
               'item_id' => '001',
               'operation_type' => 'add',
               'key_1' => '2024',
               'key_2' => 'Feb',
-              'key_3' => '06',
-            },
-          },
+              'key_3' => '06'
+            }
+          }
         )
 
         expect(Fee.count).to eq(3)
@@ -173,14 +176,15 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             code: billable_metric.code,
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
+            timestamp: Time.zone.parse('2024-02-03T01:00:00').to_f,
             properties: {
               'item_id' => '001',
               'operation_type' => 'remove',
               'key_1' => '2024',
               'key_2' => 'Feb',
-              'key_3' => '06',
-            },
-          },
+              'key_3' => '06'
+            }
+          }
         )
 
         expect(Fee.count).to eq(4)
@@ -199,7 +203,7 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
         billable_metric:,
         prorated: true,
         pay_in_advance: true,
-        properties: {amount: '1'},
+        properties: {amount: '1'}
       )
     end
 
@@ -210,8 +214,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
             plan_code: plan.code,
-            billing_time: 'calendar',
-          },
+            billing_time: 'calendar'
+          }
         )
       end
 
@@ -223,8 +227,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             code: billable_metric.code,
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
-            properties: {'item_id' => 'seat_1'},
-          },
+            properties: {'item_id' => 'seat_1'}
+          }
         )
 
         expect(Fee.count).to eq(1)
@@ -241,8 +245,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             code: billable_metric.code,
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
-            properties: {'item_id' => 'seat_1', 'operation_type' => 'remove'},
-          },
+            properties: {'item_id' => 'seat_1', 'operation_type' => 'remove'}
+          }
         )
 
         expect(Fee.count).to eq(2)
@@ -260,8 +264,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             code: billable_metric.code,
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
-            properties: {'item_id' => 'seat_1', 'operation_type' => 'remove'},
-          },
+            properties: {'item_id' => 'seat_1', 'operation_type' => 'remove'}
+          }
         )
 
         expect(Fee.count).to eq(3)
@@ -282,7 +286,7 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
         billable_metric:,
         prorated: false,
         pay_in_advance: true,
-        properties: {amount: '1'},
+        properties: {amount: '1'}
       )
     end
 
@@ -294,8 +298,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             external_id: customer.external_id,
             plan_code: plan.code,
             billing_time: 'calendar',
-            started_at: Time.zone.parse('2024-02-01T01:00:00'),
-          },
+            started_at: Time.zone.parse('2024-02-01T01:00:00')
+          }
         )
       end
 
@@ -307,8 +311,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             code: billable_metric.code,
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
-            properties: {'item_id' => 'seat_1'},
-          },
+            properties: {'item_id' => 'seat_1'}
+          }
         )
 
         expect(Fee.count).to eq(1)
@@ -326,8 +330,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
             timestamp: Time.zone.parse('2024-02-26T01:01:00').to_i,
-            properties: {'item_id' => 'seat_1', 'operation_type' => 'remove'},
-          },
+            properties: {'item_id' => 'seat_1', 'operation_type' => 'remove'}
+          }
         )
 
         expect(Fee.count).to eq(2)
@@ -345,8 +349,8 @@ describe 'Aggregation - Unique Count Scenarios', :scenarios, type: :request, tra
             transaction_id: SecureRandom.uuid,
             external_subscription_id: subscription.external_id,
             timestamp: Time.zone.parse('2024-02-26T01:01:00').to_i,
-            properties: {'item_id' => 'seat_2'},
-          },
+            properties: {'item_id' => 'seat_2'}
+          }
         )
 
         expect(Fee.count).to eq(3)

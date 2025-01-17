@@ -10,19 +10,21 @@ RSpec.describe Invoices::PaidCreditService, type: :service do
   let(:timestamp) { Time.current.to_i }
 
   describe 'call' do
-    let(:customer) { create(:customer) }
-    let(:subscription) { create(:subscription, customer:) }
+    let(:organization) { create(:organization) }
+    let(:customer) { create(:customer, organization:, payment_provider: :stripe) }
+    let(:subscription) { create(:subscription, plan:, customer:) }
+    let(:plan) { create(:plan, organization:) }
     let(:wallet) { create(:wallet, customer:) }
     let(:wallet_transaction) do
-      create(:wallet_transaction, wallet:, amount: '15.00', credit_amount: '15.00')
+      create(:wallet_transaction, wallet:, amount: '15.00', credit_amount: '15.00', invoice_requires_successful_payment:)
     end
+    let(:invoice_requires_successful_payment) { false }
 
     let(:invoice) { nil }
 
     before do
       wallet_transaction
       subscription
-      allow(SegmentTrackJob).to receive(:perform_later)
     end
 
     it 'creates an invoice' do
@@ -41,7 +43,7 @@ RSpec.describe Invoices::PaidCreditService, type: :service do
           taxes_amount_cents: 0,
           taxes_rate: 0,
           sub_total_including_taxes_amount_cents: 1500,
-          total_amount_cents: 1500,
+          total_amount_cents: 1500
         )
 
         expect(result.invoice.applied_taxes.count).to eq(0)
@@ -56,10 +58,18 @@ RSpec.describe Invoices::PaidCreditService, type: :service do
       end.to have_enqueued_job(SendWebhookJob)
     end
 
+    it_behaves_like 'syncs invoice' do
+      let(:service_call) { invoice_service.call }
+    end
+
+    it_behaves_like "applies invoice_custom_sections" do
+      let(:service_call) { invoice_service.call }
+    end
+
     it 'does not enqueue an SendEmailJob' do
       expect do
         invoice_service.call
-      end.not_to have_enqueued_job(SendEmailJob)
+      end.to have_enqueued_job(Invoices::GeneratePdfAndNotifyJob).with(hash_including(email: false))
     end
 
     context 'with lago_premium' do
@@ -68,7 +78,7 @@ RSpec.describe Invoices::PaidCreditService, type: :service do
       it 'enqueues an SendEmailJob' do
         expect do
           invoice_service.call
-        end.to have_enqueued_job(SendEmailJob)
+        end.to have_enqueued_job(Invoices::GeneratePdfAndNotifyJob).with(hash_including(email: true))
       end
 
       context 'when organization does not have right email settings' do
@@ -77,7 +87,7 @@ RSpec.describe Invoices::PaidCreditService, type: :service do
         it 'does not enqueue an SendEmailJob' do
           expect do
             invoice_service.call
-          end.not_to have_enqueued_job(SendEmailJob)
+          end.to have_enqueued_job(Invoices::GeneratePdfAndNotifyJob).with(hash_including(email: false))
         end
       end
     end
@@ -85,38 +95,20 @@ RSpec.describe Invoices::PaidCreditService, type: :service do
     it 'calls SegmentTrackJob' do
       invoice = invoice_service.call.invoice
 
-      expect(SegmentTrackJob).to have_received(:perform_later).with(
+      expect(SegmentTrackJob).to have_been_enqueued.with(
         membership_id: CurrentContext.membership,
         event: 'invoice_created',
         properties: {
           organization_id: invoice.organization.id,
           invoice_id: invoice.id,
-          invoice_type: invoice.invoice_type,
-        },
+          invoice_type: invoice.invoice_type
+        }
       )
     end
 
     it 'creates a payment' do
-      payment_create_service = instance_double(Invoices::Payments::CreateService)
-      allow(Invoices::Payments::CreateService)
-        .to receive(:new).and_return(payment_create_service)
-      allow(payment_create_service)
-        .to receive(:call)
-
-      invoice_service.call
-
-      expect(Invoices::Payments::CreateService).to have_received(:new)
-      expect(payment_create_service).to have_received(:call)
-    end
-
-    context 'when organization does not have a webhook endpoint' do
-      before { customer.organization.webhook_endpoints.destroy_all }
-
-      it 'does not enqueues a SendWebhookJob' do
-        expect do
-          invoice_service.call
-        end.not_to have_enqueued_job(SendWebhookJob)
-      end
+      result = invoice_service.call
+      expect(Invoices::Payments::CreateJob).to have_been_enqueued.with(invoice: result.invoice, payment_provider: :stripe)
     end
 
     context 'with customer timezone' do
@@ -150,6 +142,25 @@ RSpec.describe Invoices::PaidCreditService, type: :service do
         expect(result.invoice.total_amount_cents).to eq(1500)
 
         expect(result.invoice).to be_finalized
+      end
+    end
+
+    context 'with wallet_transaction.invoice_requires_successful_payment' do
+      let(:invoice_requires_successful_payment) { true }
+
+      around { |test| lago_premium!(&test) }
+
+      it 'creates an open invoice' do
+        result = invoice_service.call
+
+        expect(result).to be_success
+        expect(result.invoice).to be_open
+        expect(Invoices::Payments::CreateJob).to have_been_enqueued.with(invoice: result.invoice, payment_provider: :stripe)
+
+        # These jobs should only be enqueued for finalized invoices
+        expect(SegmentTrackJob).not_to have_been_enqueued
+        expect(Invoices::GeneratePdfAndNotifyJob).not_to have_been_enqueued
+        expect(SendWebhookJob).not_to have_been_enqueued
       end
     end
   end

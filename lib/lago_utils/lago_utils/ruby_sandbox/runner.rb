@@ -2,10 +2,6 @@
 
 require 'open3'
 
-require_relative 'sandbox_error'
-require_relative 'sanitizer'
-require_relative 'safe_environment'
-
 module LagoUtils
   module RubySandbox
     class Runner
@@ -31,7 +27,7 @@ module LagoUtils
         if parsed_result.is_a?(Hash) && parsed_result['type'] == 'error'
           raise SandboxError.new(
             initial_error: parsed_result['error'],
-            backtrace: parsed_result['backtrace'],
+            backtrace: parsed_result['backtrace']
           )
         end
 

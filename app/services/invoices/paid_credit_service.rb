@@ -22,13 +22,22 @@ module Invoices
       ActiveRecord::Base.transaction do
         create_credit_fee(invoice)
         compute_amounts(invoice)
+        Invoices::ApplyInvoiceCustomSectionsService.call(invoice:)
 
-        invoice.finalized!
+        if License.premium? && wallet_transaction.invoice_requires_successful_payment?
+          invoice.open!
+        else
+          invoice.finalized!
+        end
       end
 
-      track_invoice_created(result.invoice)
-      SendWebhookJob.perform_later('invoice.paid_credit_added', result.invoice) if should_deliver_webhook?
-      InvoiceMailer.with(invoice: result.invoice).finalized.deliver_later if should_deliver_email?
+      if invoice.finalized?
+        Utils::SegmentTrack.invoice_created(result.invoice)
+        SendWebhookJob.perform_later('invoice.paid_credit_added', result.invoice)
+        GeneratePdfAndNotifyJob.perform_later(invoice:, email: should_deliver_email?)
+        Integrations::Aggregator::Invoices::CreateJob.perform_later(invoice:) if invoice.should_sync_invoice?
+        Integrations::Aggregator::Invoices::Hubspot::CreateJob.perform_later(invoice:) if invoice.should_sync_hubspot_invoice?
+      end
 
       create_payment(result.invoice)
 
@@ -54,7 +63,7 @@ module Invoices
         customer:,
         invoice_type: :credit,
         currency:,
-        datetime: Time.zone.at(timestamp),
+        datetime: Time.zone.at(timestamp)
       )
       invoice_result.raise_if_error!
 
@@ -81,24 +90,8 @@ module Invoices
       fee_result.raise_if_error!
     end
 
-    def should_deliver_webhook?
-      customer.organization.webhook_endpoints.any?
-    end
-
     def create_payment(invoice)
-      Invoices::Payments::CreateService.new(invoice).call
-    end
-
-    def track_invoice_created(invoice)
-      SegmentTrackJob.perform_later(
-        membership_id: CurrentContext.membership,
-        event: 'invoice_created',
-        properties: {
-          organization_id: invoice.organization.id,
-          invoice_id: invoice.id,
-          invoice_type: invoice.invoice_type,
-        },
-      )
+      Invoices::Payments::CreateService.call_async(invoice:)
     end
 
     def should_deliver_email?

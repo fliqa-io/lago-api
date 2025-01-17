@@ -3,6 +3,7 @@ nb:
   invoice:
     all_subscriptions: Alle Abonnement
     all_usage_based_fees: Alle bruksbaserte kostnader
+    already_paid: Allerede betalt
     amount: Beløp
     amount_with_tax: Beløp (inkl. MVA)
     amount_without_tax: Beløp (ekskl. MVA)
@@ -17,6 +18,7 @@ nb:
     date_to: til
     details: "%{resource} detaljer"
     document_name: Faktura
+    document_tax_name: Skattefaktura
     due_date: Forfallsdato %{date}
     fee_prorated: Avgiften beregnes forholdsmessig etter brukerdager, den viste enhetsprisen er et gjennomsnitt
     fees_from_to_date: Gebyrer fra %{from_date} til %{to_date}
@@ -39,6 +41,8 @@ nb:
       fee_per_package: Gebyr per pakke
       fee_per_package_unit_price: "%{amount} per %{package_size}"
       free_units_for_the_first: Gratis enheter for de første %{count}
+    paid_invoice: Betalt faktura
+    paid_tax_invoice: Betalt skattefaktura
     payment_term: Betalingsperiode
     payment_term_days: "%{net_payment_term} dager"
     percentage:
@@ -52,8 +56,10 @@ nb:
     prepaid_credit_invoice: Forskuddsfaktura
     prepaid_credits: Forskuddsbetalte kreditter
     prepaid_credits_with_value: Forhåndsbetalte kreditter - %{wallet_name}
+    progressive_billing_credit: Bruk allerede fakturert
     quarter: kvartal
     quarterly: Kvartalsvis
+    reached_usage_threshold: Denne progressive faktureringen er generert fordi din akkumulerte bruk har nådd %{usage_amount}, og overskredet terskelen på %{threshold_amount}.
     see_breakdown: Se oversikt for antall enheter
     sub_total: Sub total
     sub_total_with_tax: Sub total (inkl. MVA)
@@ -63,6 +69,14 @@ nb:
     tax: Merverdiavgift
     tax_identification_number: 'Skatte-ID: %{tax_identification_number}'
     tax_name: "%{name} (%{rate}% on %{amount})"
+    tax_name_only:
+      customer_exempt: Kunden er fritatt for avgift
+      juris_has_no_tax: Ingen skatt
+      juris_not_taxed: Ingen skatt
+      not_collecting: Ingen skatt
+      reverse_charge: Omvendt avgiftsplikt - Skatteplikt overført til kunden
+      transaction_exempt: Kunden er fritatt for avgift
+      unknown_taxation: Ukjent
     tax_name_with_details: "%{name} (%{rate}%)"
     tax_rate: Skattesats
     taxes:

@@ -23,7 +23,7 @@ module Commitments
       ds = Subscriptions::DatesService.new_instance(
         invoice_subscription.subscription,
         invoice_subscription.timestamp,
-        current_usage:,
+        current_usage:
       )
 
       return ds unless invoice_subscription.subscription.terminated?
@@ -32,6 +32,7 @@ module Commitments
         subscription: invoice_subscription.subscription,
         invoice: invoice_subscription.invoice,
         date_service: ds,
+        match_invoice_subscription: invoice_subscription.subscription.plan.pay_in_advance?
       ).call
     end
 

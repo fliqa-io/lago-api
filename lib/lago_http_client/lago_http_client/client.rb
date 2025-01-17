@@ -6,9 +6,10 @@ module LagoHttpClient
   class Client
     RESPONSE_SUCCESS_CODES = [200, 201, 202, 204].freeze
 
-    def initialize(url)
+    def initialize(url, read_timeout: nil)
       @uri = URI(url)
       @http_client = Net::HTTP.new(uri.host, uri.port)
+      @http_client.read_timeout = read_timeout if read_timeout.present?
       @http_client.use_ssl = true if uri.scheme == 'https'
     end
 
@@ -62,20 +63,10 @@ module LagoHttpClient
       response
     end
 
-    def post_multipart_file(file_content, file_type, file_name, options = {})
-      params = options.merge(
-        {
-          'file1' => UploadIO.new(
-            StringIO.new(file_content),
-            file_type,
-            file_name,
-          ),
-        },
-      )
-
+    def post_multipart_file(params = {})
       req = Net::HTTP::Post::Multipart.new(
         uri.path,
-        params,
+        params
       )
 
       response = http_client.request(req)
@@ -100,9 +91,10 @@ module LagoHttpClient
       JSON.parse(response.body.presence || '{}')
     end
 
-    def get(headers: {}, params: nil)
+    def get(headers: {}, params: nil, body: nil)
       path = params ? "#{uri.path}?#{URI.encode_www_form(params)}" : uri.path
       req = Net::HTTP::Get.new(path)
+      req.body = URI.encode_www_form(body) if body.present?
 
       headers.keys.each do |key|
         req[key] = headers[key]

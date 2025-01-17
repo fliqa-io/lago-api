@@ -44,6 +44,9 @@ Rails.application.configure do
   config.active_record.dump_schema_after_migration = false
 
   config.hosts << /[a-z0-9-]+\.staging\.getlago\.com/
+  config.host_authorization = {
+    exclude: ->(request) { request.path == "/health" }
+  }
 
   config.license_url = 'http://license-staging-web.default.svc.cluster.local'
 
@@ -55,12 +58,13 @@ Rails.application.configure do
       :redis_cache_store,
       {
         url: ENV['LAGO_REDIS_CACHE_URL'],
+        pool: {size: ENV.fetch('LAGO_REDIS_CACHE_POOL_SIZE', 5)},
         error_handler: lambda { |method:, returning:, exception:|
           Rails.logger.error(exception.message)
           Rails.logger.error(exception.backtrace.join("\n"))
 
           Sentry.capture_exception(exception)
-        },
+        }
       }
   end
 
@@ -70,7 +74,7 @@ Rails.application.configure do
     config.action_mailer.delivery_method = :smtp
     config.action_mailer.smtp_settings = {
       address: ENV['LAGO_SMTP_ADDRESS'],
-      port: ENV['LAGO_SMTP_PORT'],
+      port: ENV['LAGO_SMTP_PORT']
     }
   end
 

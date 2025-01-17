@@ -7,7 +7,11 @@ module Types
 
       field :id, ID, null: false
 
+      field :customer_type, Types::Customers::CustomerTypeEnum
+      field :display_name, String, null: false
       field :external_id, String, null: false
+      field :firstname, String
+      field :lastname, String
       field :name, String
       field :sequential_id, String, null: false
       field :slug, String, null: false
@@ -34,6 +38,8 @@ module Types
       field :url, String, null: true
       field :zipcode, String, null: true
 
+      field :shipping_address, Types::Customers::Address, null: true
+
       field :metadata, [Types::Customers::Metadata::Object], null: true
 
       field :billing_configuration, Types::Customers::BillingConfiguration, null: true
@@ -41,7 +47,11 @@ module Types
       field :provider_customer, Types::PaymentProviderCustomers::Provider, null: true
       field :subscriptions, [Types::Subscriptions::Object], resolver: Resolvers::Customers::SubscriptionsResolver
 
+      field :anrok_customer, Types::IntegrationCustomers::Anrok, null: true
+      field :hubspot_customer, Types::IntegrationCustomers::Hubspot, null: true
       field :netsuite_customer, Types::IntegrationCustomers::Netsuite, null: true
+      field :salesforce_customer, Types::IntegrationCustomers::Salesforce, null: true
+      field :xero_customer, Types::IntegrationCustomers::Xero, null: true
 
       field :invoices, [Types::Invoices::Object]
 
@@ -50,6 +60,11 @@ module Types
       field :taxes, [Types::Taxes::Object], null: true
 
       field :credit_notes, [Types::CreditNotes::Object], null: true
+
+      field :applied_dunning_campaign, Types::DunningCampaigns::Object, null: true
+      field :exclude_from_dunning_campaign, Boolean, null: false
+      field :last_dunning_campaign_attempt, Integer, null: false
+      field :last_dunning_campaign_attempt_at, GraphQL::Types::ISO8601DateTime, null: true
 
       field :created_at, GraphQL::Types::ISO8601DateTime, null: false
       field :deleted_at, GraphQL::Types::ISO8601DateTime, null: true
@@ -69,13 +84,20 @@ module Types
         description: 'Number of available credits from credit notes per customer'
       field :has_active_wallet, Boolean, null: false, description: 'Define if a customer has an active wallet'
       field :has_credit_notes, Boolean, null: false, description: 'Define if a customer has any credit note'
+      field :has_overdue_invoices, Boolean, null: false, description: 'Define if a customer has overdue invoices'
 
       field :can_edit_attributes, Boolean, null: false, method: :editable? do
         description 'Check if customer attributes are editable'
       end
 
+      field :finalize_zero_amount_invoice, Types::Customers::FinalizeZeroAmountInvoiceEnum, null: true, description: 'Options for handling invoices with a zero total amount.'
+
+      field :applicable_invoice_custom_sections, [Types::InvoiceCustomSections::Object], null: true, description: 'Invoice custom sections applicable to the customer'
+      field :has_overwritten_invoice_custom_sections_selection, Boolean, null: true, description: 'Define if the customer has custom invoice custom sections selection'
+      field :skip_invoice_custom_sections, Boolean, null: true, description: 'Skip invoice custom sections for the customer'
+
       def invoices
-        object.invoices.not_generating.order(created_at: :desc)
+        object.invoices.visible.order(created_at: :desc)
       end
 
       def applied_coupons
@@ -92,6 +114,10 @@ module Types
 
       def has_credit_notes
         object.credit_notes.finalized.any?
+      end
+
+      def has_overdue_invoices
+        object.invoices.payment_overdue.any?
       end
 
       def active_subscriptions_count
@@ -120,8 +146,12 @@ module Types
       def billing_configuration
         {
           id: "#{object&.id}-c0nf",
-          document_locale: object&.document_locale,
+          document_locale: object&.document_locale
         }
+      end
+
+      def has_overwritten_invoice_custom_sections_selection
+        !object.skip_invoice_custom_sections && object.selected_invoice_custom_sections.any?
       end
     end
   end

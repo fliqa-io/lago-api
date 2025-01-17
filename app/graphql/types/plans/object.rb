@@ -6,7 +6,7 @@ module Types
       graphql_name 'Plan'
 
       field :id, ID, null: false
-      field :organization, Types::OrganizationType
+      field :organization, Types::Organizations::OrganizationType
 
       field :amount_cents, GraphQL::Types::BigInt, null: false
       field :amount_currency, Types::CurrencyEnum, null: false
@@ -20,9 +20,12 @@ module Types
       field :parent, Types::Plans::Object, null: true
       field :pay_in_advance, Boolean, null: false
       field :trial_period, Float
+      field :usage_thresholds, [Types::UsageThresholds::Object]
 
       field :charges, [Types::Charges::Object]
       field :taxes, [Types::Taxes::Object]
+
+      field :has_overridden_plans, Boolean
 
       field :created_at, GraphQL::Types::ISO8601DateTime, null: false
       field :updated_at, GraphQL::Types::ISO8601DateTime, null: false
@@ -33,12 +36,20 @@ module Types
       field :draft_invoices_count, Integer, null: false
       field :subscriptions_count, Integer, null: false
 
+      def usage_thresholds
+        object.usage_thresholds.order(amount_cents: :asc)
+      end
+
       def charges
         object.charges.includes(filters: {values: :billable_metric_filter}).order(created_at: :asc)
       end
 
       def charges_count
         object.charges.count
+      end
+
+      def has_overridden_plans
+        object.children.any?
       end
 
       def subscriptions_count

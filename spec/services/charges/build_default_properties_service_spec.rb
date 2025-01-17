@@ -25,10 +25,10 @@ RSpec.describe Charges::BuildDefaultPropertiesService, type: :service do
                 from_value: 0,
                 to_value: nil,
                 per_unit_amount: '0',
-                flat_amount: '0',
-              },
-            ],
-          },
+                flat_amount: '0'
+              }
+            ]
+          }
         )
       end
     end
@@ -41,8 +41,8 @@ RSpec.describe Charges::BuildDefaultPropertiesService, type: :service do
           {
             package_size: 1,
             amount: '0',
-            free_units: 0,
-          },
+            free_units: 0
+          }
         )
       end
     end
@@ -66,10 +66,10 @@ RSpec.describe Charges::BuildDefaultPropertiesService, type: :service do
                 from_value: 0,
                 to_value: nil,
                 per_unit_amount: '0',
-                flat_amount: '0',
-              },
-            ],
-          },
+                flat_amount: '0'
+              }
+            ]
+          }
         )
       end
     end
@@ -86,11 +86,19 @@ RSpec.describe Charges::BuildDefaultPropertiesService, type: :service do
                 to_value: nil,
                 rate: '0',
                 fixed_amount: '0',
-                flat_amount: '0',
-              },
-            ],
-          },
+                flat_amount: '0'
+              }
+            ]
+          }
         )
+      end
+    end
+
+    context 'when dynamic charge model' do
+      let(:charge_model) { :dynamic }
+
+      it 'returns dynamic default properties' do
+        expect(service.call).to eq({})
       end
     end
   end

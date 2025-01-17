@@ -9,6 +9,11 @@ RSpec.describe Resolvers::CustomerPortal::OrganizationResolver, type: :graphql d
         customerPortalOrganization {
           id
           name
+          billingConfiguration {
+            id
+            documentLocale
+          }
+          premiumIntegrations
         }
       }
     GQL
@@ -23,7 +28,7 @@ RSpec.describe Resolvers::CustomerPortal::OrganizationResolver, type: :graphql d
   it 'returns the customer portal organization' do
     result = execute_graphql(
       customer_portal_user: customer,
-      query:,
+      query:
     )
 
     data = result['data']['customerPortalOrganization']
@@ -31,6 +36,9 @@ RSpec.describe Resolvers::CustomerPortal::OrganizationResolver, type: :graphql d
     aggregate_failures do
       expect(data['id']).to eq(organization.id)
       expect(data['name']).to eq(organization.name)
+      expect(data['billingConfiguration']['id']).to eq("#{organization.id}-c0nf")
+      expect(data['billingConfiguration']['documentLocale']).to eq('en')
+      expect(data['premiumIntegrations']).to eq([])
     end
   end
 end

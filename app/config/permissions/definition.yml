@@ -1,5 +1,7 @@
 ---
 analytics:
+  overdue_balances:
+    view:
   view:
 billable_metrics:
   view:
@@ -28,11 +30,20 @@ customers:
   create:
   update:
   delete:
-subscriptions:
+dunning_campaigns:
   view:
   create:
   update:
   delete:
+invoice_custom_sections:
+  view: true
+  create:
+  update:
+  delete:
+subscriptions:
+  view: true
+  create:
+  update:
 wallets:
   create:
   update:
@@ -44,6 +55,7 @@ invoices:
   update: true
   void: true
   create:
+  export: true
 draft_invoices:
   update: true
 credit_notes:
@@ -51,6 +63,7 @@ credit_notes:
   create: true
   update: true
   void: true
+  export: true
 customer_settings:
   view: true
   update:
@@ -84,3 +97,9 @@ organization:
     create:
     update:
     delete:
+payment_requests:
+  view: true
+  create:
+payments:
+  view: true
+  create:

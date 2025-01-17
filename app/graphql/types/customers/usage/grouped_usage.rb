@@ -8,10 +8,15 @@ module Types
 
         field :amount_cents, GraphQL::Types::BigInt, null: false
         field :events_count, Integer, null: false
+        field :id, ID, null: false
         field :units, GraphQL::Types::Float, null: false
 
         field :filters, [Types::Customers::Usage::ChargeFilter], null: true
         field :grouped_by, GraphQL::Types::JSON, null: true
+
+        def id
+          SecureRandom.uuid
+        end
 
         def amount_cents
           object.sum(&:amount_cents)
@@ -32,7 +37,7 @@ module Types
         def filters
           return [] unless object.first.has_charge_filters?
 
-          object.sort_by { |f| f.charge_filter&.display_name }
+          object.sort_by { |f| f.charge_filter&.display_name.to_s }
         end
       end
     end

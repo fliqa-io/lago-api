@@ -14,7 +14,7 @@ module Subscriptions
         customer: subscription.customer,
         plan: subscription.plan,
         subscription_at: params.key?(:subscription_at) ? params[:subscription_at] : subscription.subscription_at,
-        ending_at: params[:ending_at],
+        ending_at: params[:ending_at]
       )
         return result
       end
@@ -36,6 +36,10 @@ module Subscriptions
         process_subscription_at_change(subscription)
       else
         subscription.save!
+
+        if subscription.should_sync_hubspot_subscription?
+          Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob.perform_later(subscription:)
+        end
       end
 
       result.subscription = subscription
@@ -66,12 +70,12 @@ module Subscriptions
       if current_plan.parent_id
         Plans::UpdateService.call(
           plan: current_plan,
-          params: params[:plan_overrides].to_h.with_indifferent_access,
+          params: params[:plan_overrides].to_h.with_indifferent_access
         )
       else
         Plans::OverrideService.call(
           plan: current_plan,
-          params: params[:plan_overrides].to_h.with_indifferent_access,
+          params: params[:plan_overrides].to_h.with_indifferent_access
         )
       end
     end

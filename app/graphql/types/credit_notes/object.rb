@@ -45,8 +45,49 @@ module Types
         description 'Check if credit note can be voided'
       end
 
+      field :error_details, [Types::ErrorDetails::Object], null: true
+      field :external_integration_id, String, null: true
+      field :integration_syncable, GraphQL::Types::Boolean, null: false
+      field :tax_provider_id, String, null: true
+      field :tax_provider_syncable, GraphQL::Types::Boolean, null: false
+
       def applied_taxes
         object.applied_taxes.order(tax_rate: :desc)
+      end
+
+      def integration_syncable
+        object.should_sync_credit_note? &&
+          object.integration_resources
+            .joins(:integration)
+            .where(integration: {type: ::Integrations::BaseIntegration::INTEGRATION_ACCOUNTING_TYPES})
+            .where(resource_type: 'credit_note', syncable_type: 'CreditNote').none?
+      end
+
+      def tax_provider_syncable
+        return false unless object.finalized?
+        return false if object.invoice.credit?
+
+        object.error_details.tax_error.any?
+      end
+
+      def external_integration_id
+        integration_customer = object.customer&.integration_customers&.accounting_kind&.first
+
+        return nil unless integration_customer
+
+        IntegrationResource.find_by(
+          integration: integration_customer.integration,
+          syncable_id: object.id,
+          syncable_type: 'CreditNote',
+          resource_type: :credit_note
+        )&.external_id
+      end
+
+      def tax_provider_id
+        integration_customer = object.customer&.anrok_customer
+        return nil unless integration_customer
+
+        object.integration_resources.where(integration_id: integration_customer.integration_id).last&.external_id
       end
     end
   end

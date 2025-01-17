@@ -23,8 +23,13 @@ module Types
     field :update_customer, mutation: Mutations::Customers::Update
     field :update_customer_invoice_grace_period, mutation: Mutations::Customers::UpdateInvoiceGracePeriod
 
+    field :create_customer_portal_wallet_transaction, mutation: Mutations::CustomerPortal::WalletTransactions::Create
     field :download_customer_portal_invoice, mutation: Mutations::CustomerPortal::DownloadInvoice
     field :generate_customer_portal_url, mutation: Mutations::CustomerPortal::GenerateUrl
+    field :update_customer_portal_customer, mutation: Mutations::CustomerPortal::UpdateCustomer
+
+    field :create_credit_notes_data_export, mutation: Mutations::DataExports::CreditNotes::Create
+    field :create_invoices_data_export, mutation: Mutations::DataExports::Invoices::Create
 
     field :create_subscription, mutation: Mutations::Subscriptions::Create
     field :terminate_subscription, mutation: Mutations::Subscriptions::Terminate
@@ -65,21 +70,31 @@ module Types
     field :destroy_integration_collection_mapping, mutation: Mutations::IntegrationCollectionMappings::Destroy
     field :destroy_integration_mapping, mutation: Mutations::IntegrationMappings::Destroy
 
+    field :fetch_integration_accounts, mutation: Mutations::IntegrationItems::FetchAccounts
     field :fetch_integration_items, mutation: Mutations::IntegrationItems::FetchItems
-    field :fetch_integration_tax_items, mutation: Mutations::IntegrationItems::FetchTaxItems
+
+    field :sync_hubspot_integration_invoice, mutation: Mutations::Integrations::Hubspot::SyncInvoice
+    field :sync_integration_credit_note, mutation: Mutations::Integrations::SyncCreditNote
+    field :sync_integration_invoice, mutation: Mutations::Integrations::SyncInvoice
+    field :sync_salesforce_invoice, mutation: Mutations::Integrations::Salesforce::SyncInvoice
 
     field :create_credit_note, mutation: Mutations::CreditNotes::Create
     field :download_credit_note, mutation: Mutations::CreditNotes::Download
+    field :retry_tax_reporting, mutation: Mutations::CreditNotes::RetryTaxReporting
     field :update_credit_note, mutation: Mutations::CreditNotes::Update
     field :void_credit_note, mutation: Mutations::CreditNotes::Void
 
     field :create_invoice, mutation: Mutations::Invoices::Create
     field :download_invoice, mutation: Mutations::Invoices::Download
+    field :finalize_all_invoices, mutation: Mutations::Invoices::FinalizeAll
     field :finalize_invoice, mutation: Mutations::Invoices::Finalize
     field :lose_invoice_dispute, mutation: Mutations::Invoices::LoseDispute
     field :refresh_invoice, mutation: Mutations::Invoices::Refresh
     field :retry_all_invoice_payments, mutation: Mutations::Invoices::RetryAllPayments
+    field :retry_all_invoices, mutation: Mutations::Invoices::RetryAll
+    field :retry_invoice, mutation: Mutations::Invoices::Retry
     field :retry_invoice_payment, mutation: Mutations::Invoices::RetryPayment
+    field :retry_tax_provider_voiding, mutation: Mutations::Invoices::RetryTaxProviderVoiding
     field :update_invoice, mutation: Mutations::Invoices::Update
     field :void_invoice, mutation: Mutations::Invoices::Void
 
@@ -92,7 +107,12 @@ module Types
     field :accept_invite, mutation: Mutations::Invites::Accept
     field :create_invite, mutation: Mutations::Invites::Create
     field :revoke_invite, mutation: Mutations::Invites::Revoke
+    field :update_invite, mutation: Mutations::Invites::Update
+
     field :revoke_membership, mutation: Mutations::Memberships::Revoke
+    field :update_membership, mutation: Mutations::Memberships::Update
+
+    field :create_payment_request, mutation: Mutations::PaymentRequests::Create
 
     field :create_password_reset, mutation: Mutations::PasswordResets::Create
     field :reset_password, mutation: Mutations::PasswordResets::Reset
@@ -114,8 +134,35 @@ module Types
     field :create_okta_integration, mutation: Mutations::Integrations::Okta::Create
     field :update_okta_integration, mutation: Mutations::Integrations::Okta::Update
 
+    field :create_anrok_integration, mutation: Mutations::Integrations::Anrok::Create
+    field :update_anrok_integration, mutation: Mutations::Integrations::Anrok::Update
+
+    field :fetch_draft_invoice_taxes, mutation: Mutations::Integrations::Anrok::FetchDraftInvoiceTaxes
+
+    field :create_xero_integration, mutation: Mutations::Integrations::Xero::Create
+    field :update_xero_integration, mutation: Mutations::Integrations::Xero::Update
+
+    field :create_hubspot_integration, mutation: Mutations::Integrations::Hubspot::Create
+    field :update_hubspot_integration, mutation: Mutations::Integrations::Hubspot::Update
+
+    field :create_salesforce_integration, mutation: Mutations::Integrations::Salesforce::Create
+    field :update_salesforce_integration, mutation: Mutations::Integrations::Salesforce::Update
+
     field :okta_accept_invite, mutation: Mutations::Auth::Okta::AcceptInvite
     field :okta_authorize, mutation: Mutations::Auth::Okta::Authorize
     field :okta_login, mutation: Mutations::Auth::Okta::Login
+
+    field :create_dunning_campaign, mutation: Mutations::DunningCampaigns::Create
+    field :destroy_dunning_campaign, mutation: Mutations::DunningCampaigns::Destroy
+    field :update_dunning_campaign, mutation: Mutations::DunningCampaigns::Update
+
+    field :create_api_key, mutation: Mutations::ApiKeys::Create
+    field :destroy_api_key, mutation: Mutations::ApiKeys::Destroy
+    field :rotate_api_key, mutation: Mutations::ApiKeys::Rotate
+    field :update_api_key, mutation: Mutations::ApiKeys::Update
+
+    field :create_invoice_custom_section, mutation: Mutations::InvoiceCustomSections::Create
+    field :destroy_invoice_custom_section, mutation: Mutations::InvoiceCustomSections::Destroy
+    field :update_invoice_custom_section, mutation: Mutations::InvoiceCustomSections::Update
   end
 end

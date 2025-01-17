@@ -31,12 +31,12 @@ RSpec.describe Resolvers::Analytics::MrrsResolver, type: :graphql do
         current_user: membership.user,
         current_organization: organization,
         permissions: required_permission,
-        query:,
+        query:
       )
 
       expect_graphql_error(
         result:,
-        message: 'unauthorized',
+        message: 'unauthorized'
       )
     end
   end
@@ -49,7 +49,7 @@ RSpec.describe Resolvers::Analytics::MrrsResolver, type: :graphql do
         current_user: membership.user,
         current_organization: organization,
         permissions: required_permission,
-        query:,
+        query:
       )
 
       mrrs_response = result['data']['mrrs']
@@ -59,24 +59,6 @@ RSpec.describe Resolvers::Analytics::MrrsResolver, type: :graphql do
         expect(month).to eq(DateTime.current.beginning_of_month)
         expect(mrrs_response['collection'].first['amountCents']).to eq(nil)
         expect(mrrs_response['collection'].first['currency']).to eq(nil)
-      end
-    end
-
-    describe '#resolve' do
-      subject(:resolve) { resolver.resolve }
-
-      let(:resolver) { described_class.new(object: nil, context: nil, field: nil) }
-      let(:current_organization) { create(:organization) }
-
-      before do
-        allow(Analytics::Mrr).to receive(:find_all_by).and_return([])
-        allow(resolver).to receive(:current_organization).and_return(current_organization)
-
-        resolve
-      end
-
-      it 'calls ::Analytics::Mrr.find_all_by' do
-        expect(Analytics::Mrr).to have_received(:find_all_by).with(current_organization.id, months: 12)
       end
     end
   end

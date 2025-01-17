@@ -4,15 +4,8 @@ module Api
   module V1
     class PlansController < Api::BaseController
       def create
-        service = ::Plans::CreateService.new
-        result = service.create(
-          PlanLegacyInput.new(
-            current_organization,
-            input_params
-              .merge(organization_id: current_organization.id)
-              .to_h
-              .deep_symbolize_keys,
-          ).create_input,
+        result = ::Plans::CreateService.call(
+          input_params.merge(organization_id: current_organization.id).to_h.deep_symbolize_keys
         )
 
         if result.success?
@@ -24,13 +17,7 @@ module Api
 
       def update
         plan = current_organization.plans.parents.find_by(code: params[:code])
-        result = ::Plans::UpdateService.call(
-          plan:,
-          params: PlanLegacyInput.new(
-            current_organization,
-            input_params.to_h.deep_symbolize_keys,
-          ).update_input,
-        )
+        result = ::Plans::UpdateService.call(plan:, params: input_params.to_h.deep_symbolize_keys)
 
         if result.success?
           render_plan(result.plan)
@@ -52,7 +39,7 @@ module Api
 
       def show
         plan = current_organization.plans.parents
-          .includes(charges: {filters: {values: :billable_metric_filter}})
+          .includes(:usage_thresholds, charges: {filters: {values: :billable_metric_filter}})
           .find_by(code: params[:code])
         return not_found_error(resource: 'plan') unless plan
 
@@ -60,20 +47,33 @@ module Api
       end
 
       def index
-        plans = current_organization.plans.parents
-          .order(created_at: :desc)
-          .page(params[:page])
-          .per(params[:per_page] || PER_PAGE)
-
-        render(
-          json: ::CollectionSerializer.new(
-            plans.includes(charges: {filters: {values: :billable_metric_filter}}),
-            ::V1::PlanSerializer,
-            collection_name: 'plans',
-            meta: pagination_metadata(plans),
-            includes: %i[charges taxes minimum_commitment],
-          ),
+        result = PlansQuery.call(
+          organization: current_organization,
+          pagination: {
+            page: params[:page],
+            limit: params[:per_page] || PER_PAGE
+          },
+          filters: {include_pending_deletion: true}
         )
+
+        if result.success?
+          render(
+            json: ::CollectionSerializer.new(
+              result.plans.includes(
+                :usage_thresholds,
+                :taxes,
+                :minimum_commitment,
+                charges: {filters: {values: :billable_metric_filter}}
+              ),
+              ::V1::PlanSerializer,
+              collection_name: "plans",
+              meta: pagination_metadata(result.plans),
+              includes: %i[charges usage_thresholds taxes minimum_commitment]
+            )
+          )
+        else
+          render_error_response(result)
+        end
       end
 
       private
@@ -90,12 +90,13 @@ module Api
           :trial_period,
           :pay_in_advance,
           :bill_charges_monthly,
+          :cascade_updates,
           tax_codes: [],
           minimum_commitment: [
             :id,
             :invoice_display_name,
             :amount_cents,
-            {tax_codes: []},
+            {tax_codes: []}
           ],
           charges: [
             :id,
@@ -105,28 +106,28 @@ module Api
             :pay_in_advance,
             :prorated,
             :invoiceable,
+            :regroup_paid_fees,
             :min_amount_cents,
             {
-              properties: {},
+              properties: {}
             },
             {
               filters: [
                 :invoice_display_name,
                 {
                   properties: {},
-                  values: {},
-                },
-              ],
+                  values: {}
+                }
+              ]
             },
-            {
-              group_properties: [
-                :group_id,
-                :invoice_display_name,
-                {values: {}},
-              ],
-            },
-            {tax_codes: []},
+            {tax_codes: []}
           ],
+          usage_thresholds: [
+            :id,
+            :threshold_display_name,
+            :amount_cents,
+            :recurring
+          ]
         )
       end
 
@@ -135,9 +136,13 @@ module Api
           json: ::V1::PlanSerializer.new(
             plan,
             root_name: 'plan',
-            includes: %i[charges taxes minimum_commitment],
-          ),
+            includes: %i[charges usage_thresholds taxes minimum_commitment]
+          )
         )
+      end
+
+      def resource_name
+        'plan'
       end
     end
   end

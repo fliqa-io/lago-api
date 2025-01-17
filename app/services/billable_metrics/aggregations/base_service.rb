@@ -3,7 +3,7 @@
 module BillableMetrics
   module Aggregations
     class BaseService < ::BaseService
-      def initialize(event_store_class:, charge:, subscription:, boundaries:, filters: {})
+      def initialize(event_store_class:, charge:, subscription:, boundaries:, filters: {}, bypass_aggregation: false)
         super(nil)
         @event_store_class = event_store_class
         @charge = charge
@@ -17,15 +17,28 @@ module BillableMetrics
 
         @boundaries = boundaries
 
+        @bypass_aggregation = bypass_aggregation
+
         result.aggregator = self
       end
 
       def aggregate(options: {})
         if grouped_by.present?
           compute_grouped_by_aggregation(options:)
+          if charge.dynamic?
+            compute_grouped_by_precise_total_amount_cents(options:)
+          end
+
+          result.aggregations.each { apply_rounding(_1) }
         else
           compute_aggregation(options:)
+          if charge.dynamic?
+            compute_precise_total_amount_cents(options:)
+          end
+
+          apply_rounding(result)
         end
+        result
       end
 
       def compute_aggregation(options: {})
@@ -36,9 +49,17 @@ module BillableMetrics
         raise NotImplementedError
       end
 
-      def per_event_aggregation
+      def compute_precise_total_amount_cents(options: {})
+        raise NotImplementedError
+      end
+
+      def compute_grouped_by_precise_total_amount_cents(options: {})
+        raise NotImplementedError
+      end
+
+      def per_event_aggregation(exclude_event: false)
         Result.new.tap do |result|
-          result.event_aggregation = compute_per_event_aggregation
+          result.event_aggregation = compute_per_event_aggregation(exclude_event:)
         end
       end
 
@@ -52,7 +73,8 @@ module BillableMetrics
         :event,
         :boundaries,
         :grouped_by,
-        :grouped_by_values
+        :grouped_by_values,
+        :bypass_aggregation
 
       delegate :billable_metric, to: :charge
 
@@ -63,7 +85,7 @@ module BillableMetrics
           code: billable_metric.code,
           subscription:,
           boundaries:,
-          filters:,
+          filters:
         )
       end
 
@@ -79,7 +101,7 @@ module BillableMetrics
         cached_aggregation = find_cached_aggregation(
           with_from_datetime: from_datetime,
           with_to_datetime: to_datetime,
-          grouped_by: target_result.grouped_by,
+          grouped_by: target_result.grouped_by
         )
 
         if cached_aggregation
@@ -96,6 +118,19 @@ module BillableMetrics
 
         target_result.aggregation = 0 if target_result.aggregation.negative?
         target_result.current_usage_units = 0 if target_result.current_usage_units.negative?
+      end
+
+      def should_bypass_aggregation?
+        return false if billable_metric.recurring?
+
+        bypass_aggregation
+      end
+
+      def empty_result
+        result.aggregation = 0
+        result.count = 0
+        result.current_usage_units = 0
+        result.options = {running_total: []}
       end
 
       def empty_results
@@ -122,10 +157,31 @@ module BillableMetrics
           .where(grouped_by: grouped_by.presence || {})
           .order(timestamp: :desc, created_at: :desc)
 
-        query = query.where.not(event_id: event.id) if event.present?
+        query = query.where.not(event_transaction_id: event.transaction_id) if event.present?
         query = query.where(charge_filter_id: charge_filter.id) if charge_filter
 
         query.first
+      end
+
+      def apply_rounding(result)
+        return if billable_metric.rounding_function.blank?
+        return if event.present? # Rouding does not apply to the in advance billing
+
+        result.aggregation = BillableMetrics::Aggregations::ApplyRoundingService
+          .call(billable_metric:, units: result.aggregation)
+          .units
+
+        if result.full_units_number.present?
+          result.full_units_number = BillableMetrics::Aggregations::ApplyRoundingService
+            .call(billable_metric:, units: result.full_units_number)
+            .units
+        end
+
+        if result.current_usage_units.present?
+          result.current_usage_units = BillableMetrics::Aggregations::ApplyRoundingService
+            .call(billable_metric:, units: result.current_usage_units)
+            .units
+        end
       end
     end
   end

@@ -148,7 +148,8 @@ module Events
               timestamp,
               property,
               operation_type,
-              #{operation_value_sql}
+              #{operation_value_sql},
+              anyOrNull(operation_type) OVER (PARTITION BY property ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING)
             FROM events_data
             ORDER BY timestamp ASC
           SQL
@@ -204,13 +205,12 @@ module Events
           <<-SQL
             WITH events_data AS (
               (#{
-                events
+                events(ordered: true)
                   .select(
-                    "toDateTime64(timestamp, 5, 'UTC') as timestamp, \
-                    #{sanitized_property_name} AS property, \
-                    coalesce(NULLIF(events_raw.properties['operation_type'], ''), 'add') AS operation_type",
+                    "timestamp, \
+                    value AS property, \
+                    coalesce(NULLIF(events_enriched.sorted_properties['operation_type'], ''), 'add') AS operation_type"
                   )
-                  .group(Events::Stores::ClickhouseStore::DEDUPLICATION_GROUP)
                   .to_sql
               })
             )
@@ -224,12 +224,12 @@ module Events
 
           <<-SQL
             WITH events_data AS (#{
-              events
+              events(ordered: true)
                 .select(
                   "#{groups.join(", ")}, \
-                  toDateTime64(timestamp, 5, 'UTC') as timestamp, \
-                  #{sanitized_property_name} AS property, \
-                  coalesce(NULLIF(events_raw.properties['operation_type'], ''), 'add') AS operation_type",
+                  timestamp, \
+                  value AS property, \
+                  coalesce(NULLIF(events_enriched.sorted_properties['operation_type'], ''), 'add') AS operation_type"
                 ).to_sql
             })
           SQL
@@ -243,15 +243,15 @@ module Events
             if (
               operation_type = 'add',
               (if(
-                (lagInFrame(operation_type, 1) OVER (PARTITION BY property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)) = 'add',
+                (anyOrNull(operation_type) OVER (PARTITION BY property ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING)) = 'add',
                 toDecimal128(0, :decimal_scale),
                 toDecimal128(1, :decimal_scale)
               ))
               ,
               (if(
-                (lagInFrame(operation_type, 1, 'remove') OVER (PARTITION BY property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)) = 'remove',
-                toDecimal128(-1, :decimal_scale),
-                toDecimal128(0, :decimal_scale)
+                (anyOrNull(operation_type) OVER (PARTITION BY property ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING)) = 'remove',
+                toDecimal128(0, :decimal_scale),
+                toDecimal128(-1, :decimal_scale)
               ))
             )
           SQL
@@ -265,15 +265,15 @@ module Events
             if (
               operation_type = 'add',
               (if(
-                (lagInFrame(operation_type, 1) OVER (PARTITION BY #{group_names}, property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)) = 'add',
+                (anyOrNull(operation_type) OVER (PARTITION BY #{group_names}, property ORDER BY timestamp ASC ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING)) = 'add',
                 toDecimal128(0, :decimal_scale),
                 toDecimal128(1, :decimal_scale)
               ))
               ,
               (if(
-                (lagInFrame(operation_type, 1, 'remove') OVER (PARTITION BY #{group_names}, property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)) = 'remove',
-                toDecimal128(-1, :decimal_scale),
-                toDecimal128(0, :decimal_scale)
+                (anyOrNull(operation_type) OVER (PARTITION BY #{group_names}, property ORDER BY timestamp ASC ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING)) = 'remove',
+                toDecimal128(0, :decimal_scale),
+                toDecimal128(-1, :decimal_scale)
               ))
             )
           SQL
@@ -288,18 +288,18 @@ module Events
                 ceil(
                   date_diff(
                     'seconds',
-                    if(timestamp < toDateTime64(:from_datetime, 5, 'UTC'), toDateTime64(:from_datetime, 5, 'UTC'), timestamp),
+                    if(timestamp < toDateTime64(:from_datetime, 3, 'UTC'), toDateTime64(:from_datetime, 3, 'UTC'), timestamp),
                     if(
-                      (leadInFrame(timestamp, 1, toDateTime64(:to_datetime, 5, 'UTC')) OVER (PARTITION BY property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)) < toDateTime64(:from_datetime, 5, 'UTC'),
-                      toDateTime64(:to_datetime, 5, 'UTC'),
-                      leadInFrame(timestamp, 1, toDateTime64(:to_datetime, 5, 'UTC')) OVER (PARTITION BY property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
+                      (leadInFrame(timestamp, 1, toDateTime64(:to_datetime, 3, 'UTC')) OVER (PARTITION BY property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)) < toDateTime64(:from_datetime, 3, 'UTC'),
+                      toDateTime64(:to_datetime, 3, 'UTC'),
+                      leadInFrame(timestamp, 1, toDateTime64(:to_datetime, 3, 'UTC')) OVER (PARTITION BY property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
                     ),
                     :timezone
                   ) / 86400
                 )
                 /
                 -- NOTE: full duration of the period
-                #{charges_duration},
+                #{charges_duration || 1},
 
                 -- NOTE: operation was a remove, so the duration is 0
                 0
@@ -318,18 +318,18 @@ module Events
                 ceil(
                   date_diff(
                     'seconds',
-                    if(timestamp < toDateTime64(:from_datetime, 5, 'UTC'), toDateTime64(:from_datetime, 5, 'UTC'), timestamp),
+                    if(timestamp < toDateTime64(:from_datetime, 3, 'UTC'), toDateTime64(:from_datetime, 3, 'UTC'), timestamp),
                     if(
-                      (leadInFrame(timestamp, 1, toDateTime64(:to_datetime, 5, 'UTC')) OVER (PARTITION BY #{group_names}, property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)) < toDateTime64(:from_datetime, 5, 'UTC'),
-                      toDateTime64(:to_datetime, 5, 'UTC'),
-                      leadInFrame(timestamp, 1, toDateTime64(:to_datetime, 5, 'UTC')) OVER (PARTITION BY #{group_names}, property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
+                      (leadInFrame(timestamp, 1, toDateTime64(:to_datetime, 3, 'UTC')) OVER (PARTITION BY #{group_names}, property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)) < toDateTime64(:from_datetime, 3, 'UTC'),
+                      toDateTime64(:to_datetime, 3, 'UTC'),
+                      leadInFrame(timestamp, 1, toDateTime64(:to_datetime, 3, 'UTC')) OVER (PARTITION BY #{group_names}, property ORDER BY timestamp ASC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
                     ),
                     :timezone
                   ) / 86400
                 )
                 /
                 -- NOTE: full duration of the period
-                #{charges_duration},
+                #{charges_duration || 1},
 
                 -- NOTE: operation was a remove, so the duration is 0
                 0
@@ -340,7 +340,7 @@ module Events
         end
 
         def group_names
-          @group_names ||= store.grouped_by.map.with_index { |_, index| "g_#{index}" }.join(', ')
+          @group_names ||= store.grouped_by.map.with_index { |_, index| "g_#{index}" }.join(", ")
         end
       end
     end

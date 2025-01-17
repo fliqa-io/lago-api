@@ -19,11 +19,11 @@ RSpec.describe Mutations::Invoices::Create, type: :graphql do
         units: 2,
         description: 'desc-123',
         invoiceDisplayName: 'fee-123',
-        taxCodes: [tax.code],
+        taxCodes: [tax.code]
       },
       {
-        addOnId: add_on_second.id,
-      },
+        addOnId: add_on_second.id
+      }
     ]
   end
   let(:mutation) do
@@ -61,9 +61,9 @@ RSpec.describe Mutations::Invoices::Create, type: :graphql do
         input: {
           customerId: customer.id,
           currency:,
-          fees:,
-        },
-      },
+          fees:
+        }
+      }
     )
 
     result_data = result['data']['createInvoice']
@@ -77,12 +77,12 @@ RSpec.describe Mutations::Invoices::Create, type: :graphql do
         'taxesAmountCents' => '560',
         'totalAmountCents' => '3360',
         'taxesRate' => 20,
-        'currency' => 'EUR',
+        'currency' => 'EUR'
       )
       expect(result_data['appliedTaxes'].map { |t| t['taxCode'] }).to contain_exactly(tax.code)
       expect(result_data['fees']).to contain_exactly(
         {'units' => 2.0, 'preciseUnitAmount' => 12.0},
-        {'units' => 1.0, 'preciseUnitAmount' => 4.0},
+        {'units' => 1.0, 'preciseUnitAmount' => 4.0}
       )
     end
   end

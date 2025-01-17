@@ -9,7 +9,7 @@ RSpec.describe Fees::InitFromAdjustedChargeFeeService, type: :service do
     create(
       :subscription,
       status: :active,
-      started_at: DateTime.parse('2022-03-15'),
+      started_at: DateTime.parse('2022-03-15')
     )
   end
 
@@ -24,8 +24,8 @@ RSpec.describe Fees::InitFromAdjustedChargeFeeService, type: :service do
       billable_metric:,
       properties: {
         amount: '20',
-        amount_currency: 'EUR',
-      },
+        amount_currency: 'EUR'
+      }
     )
   end
   let(:properties) { charge.properties }
@@ -33,7 +33,7 @@ RSpec.describe Fees::InitFromAdjustedChargeFeeService, type: :service do
   let(:boundaries) do
     {
       charges_from_datetime: subscription.started_at.beginning_of_day,
-      charges_to_datetime: subscription.started_at.end_of_month.end_of_day,
+      charges_to_datetime: subscription.started_at.end_of_month.end_of_day
     }
   end
 
@@ -47,7 +47,7 @@ RSpec.describe Fees::InitFromAdjustedChargeFeeService, type: :service do
       fee_type: :charge,
       adjusted_units: true,
       adjusted_amount: false,
-      units: 3,
+      units: 3
     )
   end
 
@@ -67,12 +67,14 @@ RSpec.describe Fees::InitFromAdjustedChargeFeeService, type: :service do
         subscription:,
         charge:,
         amount_cents: 6_000,
+        precise_amount_cents: 6_000.0,
+        taxes_precise_amount_cents: 0.0,
         amount_currency: invoice.currency,
         units: 3,
         unit_amount_cents: 2_000,
         precise_unit_amount: 20,
         events_count: 0,
-        payment_status: 'pending',
+        payment_status: 'pending'
       )
     end
   end
@@ -90,6 +92,7 @@ RSpec.describe Fees::InitFromAdjustedChargeFeeService, type: :service do
         adjusted_amount: true,
         units: 4,
         unit_amount_cents: 200,
+        unit_precise_amount_cents: 200.0
       )
     end
 
@@ -103,12 +106,14 @@ RSpec.describe Fees::InitFromAdjustedChargeFeeService, type: :service do
         invoice:,
         charge:,
         amount_cents: 800,
+        precise_amount_cents: 800.0,
+        taxes_precise_amount_cents: 0.0,
         amount_currency: invoice.currency,
         units: 4,
         unit_amount_cents: 200,
         precise_unit_amount: 2,
         events_count: 0,
-        payment_status: 'pending',
+        payment_status: 'pending'
       )
     end
   end

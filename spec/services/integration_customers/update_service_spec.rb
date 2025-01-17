@@ -14,11 +14,11 @@ RSpec.describe IntegrationCustomers::UpdateService, type: :service do
 
     let(:params) do
       {
-        integration: 'netsuite',
+        integration_type: 'netsuite',
         integration_code:,
         sync_with_provider:,
         external_customer_id:,
-        subsidiary_id:,
+        subsidiary_id:
       }
     end
 
@@ -26,21 +26,6 @@ RSpec.describe IntegrationCustomers::UpdateService, type: :service do
     let(:integration_customer) { create(:netsuite_customer, integration:, customer:) }
 
     before { integration_customer }
-
-    context 'without netsuite premium integration present' do
-      let(:integration_code) { 'not_exists' }
-      let(:sync_with_provider) { true }
-      let(:external_customer_id) { nil }
-
-      it 'returns an error' do
-        result = service_call
-
-        aggregate_failures do
-          expect(result).not_to be_success
-          expect(result.error.code).to eq('premium_integration_missing')
-        end
-      end
-    end
 
     context 'with netsuite premium integration present' do
       let(:integration_code) { integration.code }
@@ -75,17 +60,29 @@ RSpec.describe IntegrationCustomers::UpdateService, type: :service do
       context 'when sync with provider is true' do
         let(:sync_with_provider) { true }
 
-        context 'when customer external id is present' do
+        context 'when external customer id is present' do
           let(:external_customer_id) { SecureRandom.uuid }
 
           it 'returns integration customer' do
             result = service_call
 
             aggregate_failures do
-              expect(aggregator_contacts_update_service).not_to have_received(:call)
+              expect(aggregator_contacts_update_service).to have_received(:call)
               expect(result).to be_success
               expect(result.integration_customer).to eq(integration_customer)
               expect(result.integration_customer.external_customer_id).to eq(external_customer_id)
+            end
+          end
+        end
+
+        context 'when subsidiary id is present' do
+          it 'returns integration customer' do
+            result = service_call
+
+            aggregate_failures do
+              expect(aggregator_contacts_update_service).to have_received(:call)
+              expect(result).to be_success
+              expect(result.integration_customer).to eq(integration_customer)
             end
           end
         end
@@ -102,11 +99,40 @@ RSpec.describe IntegrationCustomers::UpdateService, type: :service do
               expect(result.integration_customer).to eq(integration_customer)
             end
           end
+        end
 
-          it 'updates integration customer' do
-            result = service_call
+        context 'with anrok customer' do
+          let(:external_customer_id) { SecureRandom.uuid }
+          let(:integration_customer) { create(:anrok_customer, integration:, customer:) }
 
-            expect(result.integration_customer.subsidiary_id).to eq(subsidiary_id)
+          it 'does not calls aggregator update service' do
+            service_call
+
+            expect(aggregator_contacts_update_service).not_to have_received(:call)
+          end
+
+          it 'does not update integration customer' do
+            service_call
+
+            expect(integration_customer.reload.external_customer_id).not_to eq(external_customer_id)
+          end
+        end
+
+        context 'with salesforce customer' do
+          let(:external_customer_id) { SecureRandom.uuid }
+          let(:integration) { create(:salesforce_integration, organization:) }
+          let(:integration_customer) { create(:salesforce_customer, integration:, customer:) }
+
+          it 'does not calls aggregator update service' do
+            service_call
+
+            expect(aggregator_contacts_update_service).not_to have_received(:call)
+          end
+
+          it 'does not update integration customer' do
+            service_call
+
+            expect(integration_customer.reload.external_customer_id).not_to eq(external_customer_id)
           end
         end
       end
@@ -117,10 +143,10 @@ RSpec.describe IntegrationCustomers::UpdateService, type: :service do
         context 'when customer external id is present' do
           let(:external_customer_id) { SecureRandom.uuid }
 
-          it 'does not calls aggregator update service' do
+          it 'calls aggregator update service' do
             service_call
 
-            expect(aggregator_contacts_update_service).not_to have_received(:call)
+            expect(aggregator_contacts_update_service).to have_received(:call)
           end
 
           it 'updates integration customer' do

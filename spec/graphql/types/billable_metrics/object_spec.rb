@@ -11,6 +11,7 @@ RSpec.describe Types::BillableMetrics::Object do
   it { is_expected.to have_field(:name).of_type('String!') }
   it { is_expected.to have_field(:description).of_type('String') }
   it { is_expected.to have_field(:aggregation_type).of_type('AggregationTypeEnum!') }
+  it { is_expected.to have_field(:expression).of_type('String') }
   it { is_expected.to have_field(:field_name).of_type('String') }
   it { is_expected.to have_field(:weighted_interval).of_type('WeightedIntervalEnum') }
   it { is_expected.to have_field(:filters).of_type('[BillableMetricFilter!]') }
@@ -23,4 +24,6 @@ RSpec.describe Types::BillableMetrics::Object do
   it { is_expected.to have_field(:deleted_at).of_type('ISO8601DateTime') }
   it { is_expected.to have_field(:updated_at).of_type('ISO8601DateTime!') }
   it { is_expected.to have_field(:integration_mappings).of_type('[Mapping!]') }
+  it { is_expected.to have_field(:rounding_function).of_type('RoundingFunctionEnum') }
+  it { is_expected.to have_field(:rounding_precision).of_type('Int') }
 end

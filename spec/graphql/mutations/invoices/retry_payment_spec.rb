@@ -17,7 +17,7 @@ RSpec.describe Mutations::Invoices::RetryPayment, type: :graphql do
       customer:,
       status: 'finalized',
       payment_status: 'failed',
-      ready_for_payment_processing: true,
+      ready_for_payment_processing: true
     )
   end
   let(:mutation) do
@@ -48,8 +48,8 @@ RSpec.describe Mutations::Invoices::RetryPayment, type: :graphql do
         permissions: required_permission,
         query: mutation,
         variables: {
-          input: {id: invoice.id},
-        },
+          input: {id: invoice.id}
+        }
       )
 
       data = result['data']['retryInvoicePayment']

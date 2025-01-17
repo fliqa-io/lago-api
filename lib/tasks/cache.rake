@@ -7,8 +7,16 @@ namespace :cache do
 
     Charge.where(id: charge_id).includes(plan: :subscriptions).find_each do |charge|
       charge.plan.subscriptions.find_each do |subscription|
-        Subscriptions::ChargeCacheService.new(subscription:, charge:).expire_cache
+        Subscriptions::ChargeCacheService.expire_for_subscription_charge(subscription:, charge:)
       end
     end
+  end
+
+  desc 'Expire cache for a given subscription'
+  task expire_subscription_cache: :environment do
+    subscription = Subscription.find(ENV['subscription_id'])
+    puts "Expiring cache for subscription #{subscription.id}"
+
+    Subscriptions::ChargeCacheService.expire_for_subscription(subscription)
   end
 end

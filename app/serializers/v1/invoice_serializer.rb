@@ -14,9 +14,11 @@ module V1
         status: model.status,
         payment_status: model.payment_status,
         payment_dispute_lost_at: model.payment_dispute_lost_at,
+        payment_overdue: model.payment_overdue,
         currency: model.currency,
         fees_amount_cents: model.fees_amount_cents,
         taxes_amount_cents: model.taxes_amount_cents,
+        progressive_billing_credit_amount_cents: model.progressive_billing_credit_amount_cents,
         coupons_amount_cents: model.coupons_amount_cents,
         credit_notes_amount_cents: model.credit_notes_amount_cents,
         sub_total_excluding_taxes_amount_cents: model.sub_total_excluding_taxes_amount_cents,
@@ -25,7 +27,9 @@ module V1
         prepaid_credit_amount_cents: model.prepaid_credit_amount_cents,
         file_url: model.file_url,
         version_number: model.version_number,
-      }.merge(legacy_values)
+        created_at: model.created_at.iso8601,
+        updated_at: model.updated_at.iso8601
+      }
 
       payload.merge!(customer) if include?(:customer)
       payload.merge!(subscriptions) if include?(:subscriptions)
@@ -33,6 +37,9 @@ module V1
       payload.merge!(credits) if include?(:credits)
       payload.merge!(metadata) if include?(:metadata)
       payload.merge!(applied_taxes) if include?(:applied_taxes)
+      payload.merge!(error_details) if include?(:error_details)
+      payload.merge!(applied_usage_thresholds) if model.progressive_billing?
+      payload.merge!(applied_invoice_custom_sections) if include?(:applied_invoice_custom_sections)
 
       payload
     end
@@ -41,7 +48,10 @@ module V1
 
     def customer
       {
-        customer: ::V1::CustomerSerializer.new(model.customer).serialize,
+        customer: ::V1::CustomerSerializer.new(
+          model.customer,
+          includes: include?(:integration_customers) ? [:integration_customers] : []
+        ).serialize
       }
     end
 
@@ -59,13 +69,12 @@ module V1
             :subscription,
             :customer,
             :charge,
-            :group,
             :billable_metric,
-            {charge_filter: {values: :billable_metric_filter}},
-          ],
+            {charge_filter: {values: :billable_metric_filter}}
+          ]
         ),
         ::V1::FeeSerializer,
-        collection_name: 'fees',
+        collection_name: 'fees'
       ).serialize
     end
 
@@ -77,7 +86,7 @@ module V1
       ::CollectionSerializer.new(
         model.metadata,
         ::V1::Invoices::MetadataSerializer,
-        collection_name: 'metadata',
+        collection_name: 'metadata'
       ).serialize
     end
 
@@ -85,12 +94,32 @@ module V1
       ::CollectionSerializer.new(
         model.applied_taxes,
         ::V1::Invoices::AppliedTaxSerializer,
-        collection_name: 'applied_taxes',
+        collection_name: 'applied_taxes'
       ).serialize
     end
 
-    def legacy_values
-      ::V1::Legacy::InvoiceSerializer.new(model).serialize
+    def error_details
+      ::CollectionSerializer.new(
+        model.error_details,
+        ::V1::ErrorDetailSerializer,
+        collection_name: 'error_details'
+      ).serialize
+    end
+
+    def applied_usage_thresholds
+      ::CollectionSerializer.new(
+        model.applied_usage_thresholds,
+        ::V1::AppliedUsageThresholdSerializer,
+        collection_name: 'applied_usage_thresholds'
+      ).serialize
+    end
+
+    def applied_invoice_custom_sections
+      ::CollectionSerializer.new(
+        model.applied_invoice_custom_sections,
+        ::V1::Invoices::AppliedInvoiceCustomSectionSerializer,
+        collection_name: 'applied_invoice_custom_sections'
+      ).serialize
     end
   end
 end

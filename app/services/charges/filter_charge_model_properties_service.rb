@@ -11,6 +11,15 @@ module Charges
 
     def call
       result.properties = slice_properties || {}
+
+      if result.properties[:custom_properties].present? && result.properties[:custom_properties].is_a?(String)
+        result.properties[:custom_properties] = begin
+          JSON.parse(result.properties[:custom_properties])
+        rescue JSON::ParserError
+          {}
+        end
+      end
+
       result
     end
 
@@ -26,7 +35,7 @@ module Charges
       attributes += charge_model_attributes || []
 
       sliced_attributes = properties.slice(*attributes)
-      sliced_attributes[:grouped_by].reject!(&:empty?) if charge.standard? && sliced_attributes[:grouped_by].present?
+      sliced_attributes[:grouped_by].reject!(&:empty?) if charge.supports_grouped_by? && sliced_attributes[:grouped_by].present?
       sliced_attributes
     end
 
@@ -54,6 +63,10 @@ module Charges
         ]
       when :volume
         %i[volume_ranges]
+      when :dynamic
+        if properties[:grouped_by].present?
+          [:grouped_by]
+        end
       end
     end
   end

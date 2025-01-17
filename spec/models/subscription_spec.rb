@@ -9,6 +9,10 @@ RSpec.describe Subscription, type: :model do
 
   it_behaves_like 'paper_trail traceable'
 
+  it { is_expected.to have_many(:daily_usages) }
+  it { is_expected.to have_many(:integration_resources) }
+  it { is_expected.to have_one(:lifetime_usage) }
+
   describe '#upgraded?' do
     let(:previous_subscription) { nil }
     let(:subscription) do
@@ -117,7 +121,7 @@ RSpec.describe Subscription, type: :model do
           started_at: Time.zone.yesterday,
           plan:,
           external_id: 'sub_id',
-          customer: previous_subscription.customer,
+          customer: previous_subscription.customer
         )
       end
       let(:previous_subscription) do
@@ -164,7 +168,7 @@ RSpec.describe Subscription, type: :model do
           started_at: Time.zone.yesterday,
           plan:,
           external_id: 'sub_id',
-          customer: previous_subscription.customer,
+          customer: previous_subscription.customer
         )
       end
       let(:previous_subscription) do
@@ -210,7 +214,7 @@ RSpec.describe Subscription, type: :model do
         previous_subscription:,
         started_at: Time.zone.yesterday,
         external_id: 'sub_id',
-        customer:,
+        customer:
       )
     end
 
@@ -227,7 +231,7 @@ RSpec.describe Subscription, type: :model do
           started_at: Time.current.last_month,
           status: :terminated,
           external_id: 'sub_id',
-          customer:,
+          customer:
         )
       end
 
@@ -244,7 +248,7 @@ RSpec.describe Subscription, type: :model do
           started_at: Time.zone.yesterday,
           external_id: 'sub_id',
           customer:,
-          status: :terminated,
+          status: :terminated
         )
       end
 
@@ -254,7 +258,7 @@ RSpec.describe Subscription, type: :model do
           started_at: Time.current.last_year,
           external_id: 'sub_id',
           status: :terminated,
-          customer:,
+          customer:
         )
       end
 
@@ -272,7 +276,7 @@ RSpec.describe Subscription, type: :model do
       create(
         :subscription,
         plan:,
-        customer: create(:customer, organization:),
+        customer: create(:customer, organization:)
       )
     end
 
@@ -281,7 +285,7 @@ RSpec.describe Subscription, type: :model do
         :subscription,
         plan:,
         external_id:,
-        customer: create(:customer, organization:),
+        customer: create(:customer, organization:)
       )
     end
 
@@ -417,6 +421,43 @@ RSpec.describe Subscription, type: :model do
     end
   end
 
+  describe '#should_sync_hubspot_subscription??' do
+    subject(:method_call) { subscription.should_sync_hubspot_subscription? }
+
+    let(:subscription) { create(:subscription, customer:) }
+    let(:organization) { create(:organization) }
+    let(:customer) { create(:customer, organization:) }
+
+    context 'without integration hubspot customer' do
+      it 'returns false' do
+        expect(method_call).to eq(false)
+      end
+    end
+
+    context 'with integration hubspot customer' do
+      let(:integration_customer) { create(:hubspot_customer, integration:, customer:) }
+      let(:integration) { create(:hubspot_integration, organization:, sync_subscriptions:) }
+
+      before { integration_customer }
+
+      context 'when sync subscriptions is true' do
+        let(:sync_subscriptions) { true }
+
+        it 'returns true' do
+          expect(method_call).to eq(true)
+        end
+      end
+
+      context 'when sync subscriptions is false' do
+        let(:sync_subscriptions) { false }
+
+        it 'returns false' do
+          expect(method_call).to eq(false)
+        end
+      end
+    end
+  end
+
   describe '.date_diff_with_timezone' do
     let(:from_datetime) { Time.zone.parse('2023-08-31T23:10:00') }
     let(:to_datetime) { Time.zone.parse('2023-09-30T22:59:59') }
@@ -429,7 +470,7 @@ RSpec.describe Subscription, type: :model do
         :subscription,
         plan:,
         customer:,
-        terminated_at:,
+        terminated_at:
       )
     end
 
@@ -448,7 +489,7 @@ RSpec.describe Subscription, type: :model do
           :subscription,
           plan:,
           customer:,
-          previous_subscription_id: subscription.id,
+          previous_subscription_id: subscription.id
         )
       end
 
@@ -459,6 +500,57 @@ RSpec.describe Subscription, type: :model do
 
       it 'takes the daylight saving time into account' do
         expect(result).to eq(29)
+      end
+    end
+  end
+
+  describe '#mark_as_active!' do
+    subject(:subscription) { create(:subscription, status: :pending) }
+
+    it 'changes the status to active' do
+      expect { subscription.mark_as_active! }
+        .to change(subscription, :status).from('pending').to('active')
+
+      expect(subscription.started_at).to be_present
+      expect(subscription.lifetime_usage).to be_present
+    end
+
+    context 'with a previous subscription' do
+      subject(:subscription) { create(:subscription, status: :pending, previous_subscription:) }
+
+      let(:previous_subscription) { create(:subscription, :terminated) }
+      let(:lifetime_usage) { create(:lifetime_usage, subscription: previous_subscription) }
+
+      before { lifetime_usage }
+
+      it 'changes the status to active' do
+        expect { subscription.mark_as_active! }
+          .to change(subscription, :status).from('pending').to('active')
+
+        expect(lifetime_usage.reload.subscription).to eq(subscription)
+      end
+    end
+  end
+
+  describe '#terminated_at?' do
+    context 'when subscription is terminated before the timestamp' do
+      it 'returns true' do
+        subscription = build(:subscription, :terminated, terminated_at: 2.days.ago)
+        expect(subscription.terminated_at?(1.day.ago)).to be true
+      end
+    end
+
+    context 'when subscription is terminated after the timestamp' do
+      it 'returns false' do
+        subscription = build(:subscription, :terminated, terminated_at: 1.day.from_now)
+        expect(subscription.terminated_at?(2.days.ago)).to be false
+      end
+    end
+
+    context 'when subscription is not terminated' do
+      it 'returns false' do
+        subscription = build(:subscription)
+        expect(subscription.terminated_at?(1.day.ago)).to be false
       end
     end
   end

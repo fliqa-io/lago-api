@@ -10,13 +10,15 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
       subscription:,
       boundaries: {
         from_datetime:,
-        to_datetime:,
+        to_datetime:
       },
       filters:,
+      bypass_aggregation:
     )
   end
 
   let(:event_store_class) { Events::Stores::PostgresStore }
+  let(:bypass_aggregation) { false }
   let(:filters) do
     {event: pay_in_advance_event, grouped_by:, charge_filter:, matching_filters:, ignored_filters:}
   end
@@ -26,7 +28,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
       :subscription,
       started_at:,
       subscription_at:,
-      billing_time: :anniversary,
+      billing_time: :anniversary
     )
   end
 
@@ -46,14 +48,14 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
       organization:,
       aggregation_type: 'unique_count_agg',
       field_name: 'unique_id',
-      recurring: true,
+      recurring: true
     )
   end
 
   let(:charge) do
     create(
       :standard_charge,
-      billable_metric:,
+      billable_metric:
     )
   end
 
@@ -69,7 +71,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
       external_customer_id: customer.external_id,
       external_subscription_id: subscription.external_id,
       timestamp: added_at,
-      properties: {unique_id: SecureRandom.uuid},
+      properties: {unique_id: SecureRandom.uuid}
     )
   end
 
@@ -87,7 +89,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
           external_customer_id: customer.external_id,
           external_subscription_id: subscription.external_id,
           timestamp: from_datetime + 10.days,
-          properties: {unique_id: SecureRandom.uuid},
+          properties: {unique_id: SecureRandom.uuid}
         )
       end
 
@@ -105,7 +107,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
           organization:,
           aggregation_type: 'unique_count_agg',
           field_name: 'unique_id',
-          recurring: false,
+          recurring: false
         )
       end
       let(:new_unique_count_event) do
@@ -116,7 +118,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
           external_customer_id: customer.external_id,
           external_subscription_id: subscription.external_id,
           timestamp: from_datetime + 10.days,
-          properties: {unique_id: SecureRandom.uuid},
+          properties: {unique_id: SecureRandom.uuid}
         )
       end
 
@@ -140,7 +142,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             subscription_at:,
             billing_time: :anniversary,
             terminated_at: to_datetime,
-            status: :terminated,
+            status: :terminated
           )
         end
         let(:to_datetime) { DateTime.parse('2022-07-24 23:59:59') }
@@ -158,7 +160,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             subscription_at:,
             billing_time: :anniversary,
             terminated_at: to_datetime,
-            status: :terminated,
+            status: :terminated
           )
         end
         let(:to_datetime) { DateTime.parse('2022-07-24 23:59:59') }
@@ -169,7 +171,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             previous_subscription: subscription,
             organization:,
             customer:,
-            started_at: to_datetime,
+            started_at: to_datetime
           )
         end
 
@@ -225,8 +227,8 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
           timestamp: to_datetime - 15.days,
           properties: {
             unique_id: unique_count_event.properties['unique_id'],
-            operation_type: 'remove',
-          },
+            operation_type: 'remove'
+          }
         )
 
         expect(result.aggregation).to eq(0)
@@ -243,8 +245,8 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             timestamp: to_datetime,
             properties: {
               unique_id: unique_count_event.properties['unique_id'],
-              operation_type: 'remove',
-            },
+              operation_type: 'remove'
+            }
           )
 
           expect(result.aggregation).to eq(0)
@@ -265,8 +267,8 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
           timestamp: to_datetime - 1.day,
           properties: {
             unique_id: unique_count_event.properties['unique_id'],
-            operation_type: 'remove',
-          },
+            operation_type: 'remove'
+          }
         )
 
         expect(result.aggregation).to eq(0)
@@ -285,8 +287,8 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             timestamp: added_at.end_of_day,
             properties: {
               unique_id: unique_count_event.properties['unique_id'],
-              operation_type: 'remove',
-            },
+              operation_type: 'remove'
+            }
           )
 
           expect(result.aggregation).to eq(0)
@@ -306,7 +308,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
           external_customer_id: customer.external_id,
           external_subscription_id: subscription.external_id,
           timestamp: from_datetime + 5.days,
-          properties: {unique_id: '000'},
+          properties: {unique_id: '000'}
         )
       end
 
@@ -316,10 +318,11 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
           organization:,
           charge:,
           event_id: previous_event.id,
+          event_transaction_id: previous_event.transaction_id,
           external_subscription_id: subscription.external_id,
           timestamp: previous_event.timestamp,
           current_aggregation: '1',
-          max_aggregation: '3',
+          max_aggregation: '3'
         )
       end
 
@@ -355,7 +358,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
           external_customer_id: customer.external_id,
           external_subscription_id: subscription.external_id,
           timestamp: from_datetime + 10.days,
-          properties:,
+          properties:
         )
       end
 
@@ -375,7 +378,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             :billable_metric_filter,
             billable_metric:,
             key: 'region',
-            values: ['north america', 'europe', 'africa'],
+            values: ['north america', 'europe', 'africa']
           )
         end
         let(:matching_filters) { {'region' => ['europe']} }
@@ -386,7 +389,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             :charge_filter_value,
             charge_filter:,
             billable_metric_filter: filter,
-            values: ['europe'],
+            values: ['europe']
           )
         end
 
@@ -420,7 +423,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             external_customer_id: customer.external_id,
             external_subscription_id: subscription.external_id,
             timestamp: from_datetime + 5.days,
-            properties: {unique_id: '001'},
+            properties: {unique_id: '001'}
           )
         end
 
@@ -430,10 +433,11 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             organization:,
             charge:,
             event_id: previous_event.id,
+            event_transaction_id: previous_event.transaction_id,
             external_subscription_id: subscription.external_id,
             timestamp: previous_event.timestamp,
             current_aggregation: '2',
-            max_aggregation: '2',
+            max_aggregation: '2'
           )
         end
 
@@ -455,7 +459,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             external_customer_id: customer.external_id,
             external_subscription_id: subscription.external_id,
             timestamp: from_datetime + 5.days,
-            properties: {unique_id: '000'},
+            properties: {unique_id: '000'}
           )
         end
 
@@ -465,10 +469,11 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             organization:,
             charge:,
             event_id: previous_event.id,
+            event_transaction_id: previous_event.transaction_id,
             external_subscription_id: subscription.external_id,
             timestamp: previous_event.timestamp,
             current_aggregation: '4',
-            max_aggregation: '7',
+            max_aggregation: '7'
           )
         end
 
@@ -479,6 +484,26 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
 
           expect(result.pay_in_advance_aggregation).to eq(0)
         end
+      end
+    end
+
+    context 'when bypass_aggregation is set to true and metric is not recurring' do
+      let(:billable_metric) do
+        create(
+          :billable_metric,
+          organization:,
+          aggregation_type: 'unique_count_agg',
+          field_name: 'unique_id',
+          recurring: false
+        )
+      end
+      let(:bypass_aggregation) { true }
+
+      it 'returns a default empty result' do
+        expect(result.aggregation).to eq(0)
+        expect(result.count).to eq(0)
+        expect(result.current_usage_units).to eq(0)
+        expect(result.options).to eq({running_total: []})
       end
     end
   end
@@ -500,8 +525,8 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             timestamp: added_at,
             properties: {
               unique_id: SecureRandom.uuid,
-              agent_name:,
-            },
+              agent_name:
+            }
           )
         end
       end
@@ -517,8 +542,8 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             timestamp: from_datetime + 10.days,
             properties: {
               unique_id: SecureRandom.uuid,
-              agent_name:,
-            },
+              agent_name:
+            }
           )
         end
       end
@@ -548,7 +573,7 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             organization:,
             aggregation_type: 'unique_count_agg',
             field_name: 'unique_id',
-            recurring: false,
+            recurring: false
           )
         end
 
@@ -579,8 +604,8 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             timestamp: added_at,
             properties: {
               unique_id: SecureRandom.uuid,
-              agent_name:,
-            },
+              agent_name:
+            }
           )
         end
       end
@@ -616,6 +641,30 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
       end
     end
 
+    context 'when bypass_aggregation is set to true and metric is not recurring' do
+      let(:billable_metric) do
+        create(
+          :billable_metric,
+          organization:,
+          aggregation_type: 'unique_count_agg',
+          field_name: 'unique_id',
+          recurring: false
+        )
+      end
+      let(:bypass_aggregation) { true }
+
+      it 'returns an empty result' do
+        result = count_service.aggregate
+
+        expect(result.aggregations.count).to eq(1)
+
+        aggregation = result.aggregations.first
+        expect(aggregation.aggregation).to eq(0)
+        expect(aggregation.count).to eq(0)
+        expect(aggregation.grouped_by).to eq({'agent_name' => nil})
+      end
+    end
+
     context 'when current usage context and charge is pay in advance' do
       let(:options) do
         {is_pay_in_advance: true, is_current_usage: true}
@@ -634,8 +683,8 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             timestamp: added_at,
             properties: {
               unique_id: SecureRandom.uuid,
-              agent_name:,
-            },
+              agent_name:
+            }
           )
         end
       end
@@ -651,8 +700,8 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             timestamp: from_datetime + 5.days,
             properties: {
               unique_id: SecureRandom.uuid,
-              agent_name:,
-            },
+              agent_name:
+            }
           )
         end
       end
@@ -664,11 +713,12 @@ RSpec.describe BillableMetrics::Aggregations::UniqueCountService, type: :service
             organization:,
             charge:,
             event_id: previous_events[index].id,
+            event_transaction_id: previous_events[index].transaction_id,
             external_subscription_id: subscription.external_id,
             timestamp: previous_events[index].timestamp,
             current_aggregation: '1',
             max_aggregation: '3',
-            grouped_by: {'agent_name' => agent_name},
+            grouped_by: {'agent_name' => agent_name}
           )
         end
       end

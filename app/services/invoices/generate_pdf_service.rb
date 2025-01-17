@@ -21,12 +21,9 @@ module Invoices
       result
     end
 
-    # rubocop:disable Rails/OutputSafety
     def render_html
-      pdf_service = Utils::PdfGenerator.new(template:, context: invoice)
-      pdf_service.render_html.html_safe
+      Utils::PdfGenerator.new(template:, context: invoice).render_html
     end
-    # rubocop:enable Rails/OutputSafety
 
     private
 
@@ -40,7 +37,7 @@ module Invoices
         invoice.file.attach(
           io: pdf_result.io,
           filename: "#{invoice.number}.pdf",
-          content_type: 'application/pdf',
+          content_type: 'application/pdf'
         )
 
         invoice.save!

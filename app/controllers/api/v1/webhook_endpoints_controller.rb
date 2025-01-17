@@ -6,7 +6,7 @@ module Api
       def create
         service = ::WebhookEndpoints::CreateService.new(
           organization: current_organization,
-          params: create_params,
+          params: create_params
         )
 
         result = service.call
@@ -20,7 +20,7 @@ module Api
         service = ::WebhookEndpoints::UpdateService.new(
           id: params[:id],
           organization: current_organization,
-          params: update_params,
+          params: update_params
         )
 
         result = service.call
@@ -31,18 +31,26 @@ module Api
       end
 
       def index
-        webhook_endpoints = current_organization.webhook_endpoints
-          .page(params[:page])
-          .per(params[:per_page] || PER_PAGE)
-
-        render(
-          json: ::CollectionSerializer.new(
-            webhook_endpoints,
-            ::V1::WebhookEndpointSerializer,
-            collection_name: 'webhook_endpoints',
-            meta: pagination_metadata(webhook_endpoints),
-          ),
+        result = WebhookEndpointsQuery.call(
+          organization: current_organization,
+          pagination: {
+            page: params[:page],
+            limit: params[:per_page] || PER_PAGE
+          }
         )
+
+        if result.success?
+          render(
+            json: ::CollectionSerializer.new(
+              result.webhook_endpoints,
+              ::V1::WebhookEndpointSerializer,
+              collection_name: "webhook_endpoints",
+              meta: pagination_metadata(result.webhook_endpoints)
+            )
+          )
+        else
+          render_error_response(result)
+        end
       end
 
       def show
@@ -70,14 +78,14 @@ module Api
         params.require(:webhook_endpoint).permit(
           :id,
           :webhook_url,
-          :signature_algo,
+          :signature_algo
         )
       end
 
       def update_params
         params.require(:webhook_endpoint).permit(
           :webhook_url,
-          :signature_algo,
+          :signature_algo
         )
       end
 
@@ -85,9 +93,13 @@ module Api
         render(
           json: ::V1::WebhookEndpointSerializer.new(
             webhook_endpoint,
-            root_name: 'webhook_endpoint',
-          ),
+            root_name: 'webhook_endpoint'
+          )
         )
+      end
+
+      def resource_name
+        'webhook_endpoint'
       end
     end
   end

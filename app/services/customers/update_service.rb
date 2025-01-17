@@ -4,23 +4,33 @@ module Customers
   class UpdateService < BaseService
     include Customers::PaymentProviderFinder
 
-    def update(**args)
-      customer = result.user.customers.find_by(id: args[:id])
-      return result.not_found_failure!(resource: 'customer') unless customer
+    def initialize(customer:, args:)
+      @customer = customer
+      @args = args
+
+      super
+    end
+
+    def call
+      return result.not_found_failure!(resource: "customer") unless customer
 
       unless valid_metadata_count?(metadata: args[:metadata])
         return result.single_validation_failure!(
           field: :metadata,
-          error_code: 'invalid_count',
+          error_code: "invalid_count"
         )
       end
 
       old_payment_provider = customer.payment_provider
+      old_provider_customer = customer.provider_customer
       ActiveRecord::Base.transaction do
         billing_configuration = args[:billing_configuration]&.to_h || {}
+        shipping_address = args[:shipping_address]&.to_h || {}
+
         if args.key?(:currency)
-          update_currency(customer:, currency: args[:currency], customer_update: true)
-          return result unless result.success?
+          Customers::UpdateCurrencyService
+            .call(customer:, currency: args[:currency], customer_update: true)
+            .raise_if_error!
         end
 
         customer.name = args[:name] if args.key?(:name)
@@ -37,13 +47,23 @@ module Customers
         customer.logo_url = args[:logo_url] if args.key?(:logo_url)
         customer.legal_name = args[:legal_name] if args.key?(:legal_name)
         customer.legal_number = args[:legal_number] if args.key?(:legal_number)
-        customer.net_payment_term = args[:net_payment_term] if args.key?(:net_payment_term)
         customer.external_salesforce_id = args[:external_salesforce_id] if args.key?(:external_salesforce_id)
+        customer.shipping_address_line1 = shipping_address[:address_line1] if shipping_address.key?(:address_line1)
+        customer.shipping_address_line2 = shipping_address[:address_line2] if shipping_address.key?(:address_line2)
+        customer.shipping_city = shipping_address[:city] if shipping_address.key?(:city)
+        customer.shipping_zipcode = shipping_address[:zipcode] if shipping_address.key?(:zipcode)
+        customer.shipping_state = shipping_address[:state] if shipping_address.key?(:state)
+        customer.shipping_country = shipping_address[:country]&.upcase if shipping_address.key?(:country)
+        customer.firstname = args[:firstname] if args.key?(:firstname)
+        customer.lastname = args[:lastname] if args.key?(:lastname)
+        customer.customer_type = args[:customer_type] if args.key?(:customer_type)
+
+        if args.key?(:finalize_zero_amount_invoice)
+          customer.finalize_zero_amount_invoice = args[:finalize_zero_amount_invoice]
+        end
 
         assign_premium_attributes(customer, args)
 
-        # TODO: delete this when GraphQL will use billing_configuration.
-        customer.vat_rate = args[:vat_rate] if args.key?(:vat_rate)
         customer.payment_provider = args[:payment_provider] if args.key?(:payment_provider)
         customer.payment_provider_code = args[:payment_provider_code] if args.key?(:payment_provider_code)
         customer.invoice_footer = args[:invoice_footer] if args.key?(:invoice_footer)
@@ -60,7 +80,6 @@ module Customers
       if args.key?(:billing_configuration)
         billing = args[:billing_configuration]
         customer.invoice_footer = billing[:invoice_footer] if billing.key?(:invoice_footer)
-        customer.vat_rate = billing[:vat_rate] if billing.key?(:vat_rate)
 
         if License.premium? && billing.key?(:invoice_grace_period)
           Customers::UpdateInvoiceGracePeriodService.call(customer:, grace_period: billing[:invoice_grace_period])
@@ -74,8 +93,37 @@ module Customers
       # NOTE: external_id is not editable if customer is attached to subscriptions
       customer.external_id = args[:external_id] if customer.editable? && args.key?(:external_id)
 
+      if customer.organization.auto_dunning_enabled?
+        if args.key?(:applied_dunning_campaign_id)
+          customer.applied_dunning_campaign = applied_dunning_campaign
+          customer.exclude_from_dunning_campaign = false
+        end
+
+        # NOTE: exclude_from_dunning_campaign has higher priority than applied campaign
+        if args.key?(:exclude_from_dunning_campaign)
+          customer.exclude_from_dunning_campaign = args[:exclude_from_dunning_campaign]
+          customer.applied_dunning_campaign = nil if args[:exclude_from_dunning_campaign]
+        end
+      end
+
       ActiveRecord::Base.transaction do
+        if old_provider_customer && args[:payment_provider].nil? && args[:payment_provider_code].present?
+          old_provider_customer.discard!
+          customer.payment_provider_code = nil
+        end
+
+        if customer.applied_dunning_campaign_id_changed? || customer.exclude_from_dunning_campaign_changed?
+          customer.reset_dunning_campaign!
+        end
+
+        Customers::ManageInvoiceCustomSectionsService.call(
+          customer:,
+          skip_invoice_custom_sections: args[:skip_invoice_custom_sections],
+          section_ids: args[:applicable_invoice_custom_section_ids]
+        ).raise_if_error!
+
         customer.save!
+        customer.reload
 
         if customer.organization.eu_tax_management
           eu_tax_code = Customers::EuAutoTaxesService.call(customer:)
@@ -103,37 +151,25 @@ module Customers
       end
 
       result.customer = customer
+
+      IntegrationCustomers::CreateOrUpdateService.call(
+        integration_customers: args[:integration_customers],
+        customer: result.customer,
+        new_customer: false
+      )
+      SendWebhookJob.perform_later("customer.updated", customer)
       result
     rescue ActiveRecord::RecordInvalid => e
       result.record_validation_failure!(record: e.record)
-    end
-
-    def update_currency(customer:, currency:, customer_update: false)
-      return result if customer.currency == currency
-
-      if customer_update
-        # NOTE: direct update of the customer currency
-        unless customer.editable?
-          return result.single_validation_failure!(
-            field: :currency,
-            error_code: 'currencies_does_not_match',
-          )
-        end
-      elsif customer.currency.present? || !customer.editable?
-        # NOTE: Assign currency from another resource
-        return result.single_validation_failure!(
-          field: :currency,
-          error_code: 'currencies_does_not_match',
-        )
-      end
-
-      customer.update!(currency:)
-      result
-    rescue ActiveRecord::RecordInvalid => e
-      result.record_validation_failure!(record: e.record)
+    rescue ActiveRecord::RecordNotFound => e
+      result.not_found_failure!(resource: e.model.underscore)
+    rescue BaseService::FailedResult => e
+      e.result
     end
 
     private
+
+    attr_reader :customer, :args
 
     def valid_metadata_count?(metadata:)
       return true if metadata.blank?
@@ -149,65 +185,29 @@ module Customers
     end
 
     def create_or_update_provider_customer(customer, payment_provider, billing_configuration = {})
+      return if payment_provider.nil?
+
       handle_provider_customer = customer.payment_provider.present?
       handle_provider_customer ||= (billing_configuration || {})[:provider_customer_id].present?
+      handle_provider_customer ||= customer.send(:"#{payment_provider}_customer")&.provider_customer_id.present?
+      return unless handle_provider_customer
 
-      case payment_provider
-      when 'stripe'
-        handle_provider_customer ||= customer.stripe_customer&.provider_customer_id.present?
-
-        return unless handle_provider_customer
-
-        update_stripe_customer(customer, billing_configuration)
-      when 'gocardless'
-        handle_provider_customer ||= customer.gocardless_customer&.provider_customer_id.present?
-
-        return unless handle_provider_customer
-
-        update_gocardless_customer(customer, billing_configuration)
-      when 'adyen'
-        handle_provider_customer ||= customer.adyen_customer&.provider_customer_id.present?
-
-        return unless handle_provider_customer
-
-        update_adyen_customer(customer, billing_configuration)
-      end
-    end
-
-    def update_stripe_customer(customer, billing_configuration)
-      create_result = PaymentProviderCustomers::CreateService.new(customer).create_or_update(
-        customer_class: PaymentProviderCustomers::StripeCustomer,
+      PaymentProviders::CreateCustomerFactory.new_instance(
+        provider: payment_provider,
+        customer:,
         payment_provider_id: payment_provider(customer)&.id,
-        params: billing_configuration,
-      )
-      create_result.raise_if_error!
+        params: billing_configuration
+      ).call.raise_if_error!
 
       # NOTE: Create service is modifying an other instance of the provider customer
-      customer.stripe_customer&.reload
+      customer.reload
     end
 
-    def update_gocardless_customer(customer, billing_configuration)
-      create_result = PaymentProviderCustomers::CreateService.new(customer).create_or_update(
-        customer_class: PaymentProviderCustomers::GocardlessCustomer,
-        payment_provider_id: payment_provider(customer)&.id,
-        params: billing_configuration,
-      )
-      create_result.raise_if_error!
+    def applied_dunning_campaign
+      return customer.applied_dunning_campaign unless args.key?(:applied_dunning_campaign_id)
+      return unless args[:applied_dunning_campaign_id]
 
-      # NOTE: Create service is modifying an other instance of the provider customer
-      customer.gocardless_customer&.reload
-    end
-
-    def update_adyen_customer(customer, billing_configuration)
-      create_result = PaymentProviderCustomers::CreateService.new(customer).create_or_update(
-        customer_class: PaymentProviderCustomers::AdyenCustomer,
-        payment_provider_id: payment_provider(customer)&.id,
-        params: billing_configuration,
-      )
-      create_result.raise_if_error!
-
-      # NOTE: Create service is modifying an other instance of the provider customer
-      customer.adyen_customer&.reload
+      DunningCampaign.find(args[:applied_dunning_campaign_id])
     end
   end
 end

@@ -7,7 +7,7 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
     described_class.apply(
       charge:,
       aggregation_result:,
-      properties: charge.properties,
+      properties: charge.properties
     )
   end
 
@@ -36,8 +36,8 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
         free_units_per_events:,
         free_units_per_total_aggregation:,
         per_transaction_max_amount:,
-        per_transaction_min_amount:,
-      },
+        per_transaction_min_amount:
+      }
     )
   end
 
@@ -58,8 +58,8 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
           paid_events: 2,
           fixed_fee_unit_amount: 2,
           fixed_fee_total_amount: '0.0',
-          min_max_adjustment_total_amount: '0.0',
-        },
+          min_max_adjustment_total_amount: '0.0'
+        }
       )
     end
   end
@@ -79,8 +79,8 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
           paid_events: 2,
           fixed_fee_unit_amount: 2,
           fixed_fee_total_amount: '4.0', # (4 - 2) * 2.0
-          min_max_adjustment_total_amount: '0.0',
-        },
+          min_max_adjustment_total_amount: '0.0'
+        }
       )
     end
   end
@@ -106,8 +106,8 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
           paid_events: 4,
           fixed_fee_unit_amount: 2,
           fixed_fee_total_amount: '8.0',
-          min_max_adjustment_total_amount: '0.0',
-        },
+          min_max_adjustment_total_amount: '0.0'
+        }
       )
     end
   end
@@ -129,8 +129,8 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
           paid_events: 2,
           fixed_fee_unit_amount: 2,
           fixed_fee_total_amount: '4.0',
-          min_max_adjustment_total_amount: '0.0',
-        },
+          min_max_adjustment_total_amount: '0.0'
+        }
       )
     end
   end
@@ -152,8 +152,8 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
           paid_events: 1,
           fixed_fee_unit_amount: 2,
           fixed_fee_total_amount: '2.0', # (4 - 3) * 2.0
-          min_max_adjustment_total_amount: '0.0',
-        },
+          min_max_adjustment_total_amount: '0.0'
+        }
       )
     end
   end
@@ -177,8 +177,8 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
           paid_events: 4,
           fixed_fee_unit_amount: 2,
           fixed_fee_total_amount: '8.0', # 4 * 2.0
-          min_max_adjustment_total_amount: '0.0',
-        },
+          min_max_adjustment_total_amount: '0.0'
+        }
       )
     end
   end
@@ -202,8 +202,8 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
           paid_events: 1,
           fixed_fee_unit_amount: 2,
           fixed_fee_total_amount: '2.0', # (4 - 3) * 2.0
-          min_max_adjustment_total_amount: '0.0',
-        },
+          min_max_adjustment_total_amount: '0.0'
+        }
       )
     end
   end
@@ -227,7 +227,7 @@ RSpec.describe Charges::ChargeModels::PercentageService, type: :service do
         event_store_class:,
         charge:,
         subscription: nil,
-        boundaries: nil,
+        boundaries: nil
       )
     end
 

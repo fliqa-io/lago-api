@@ -9,21 +9,6 @@ RSpec.describe Charge, type: :model do
 
   it { is_expected.to have_many(:filters).dependent(:destroy) }
 
-  describe '#properties' do
-    context 'with group properties' do
-      it 'returns the group properties' do
-        property = create(:group_property, charge:, values: {foo: 'bar'})
-        expect(charge.properties(group_id: property.group_id)).to eq(property.values)
-      end
-    end
-
-    context 'without group properties' do
-      it 'returns the charge properties' do
-        expect(charge.properties).to eq(charge.properties)
-      end
-    end
-  end
-
   describe '#validate_graduated' do
     subject(:charge) do
       build(:graduated_charge, properties: charge_properties)
@@ -38,8 +23,8 @@ RSpec.describe Charge, type: :model do
       BaseService::Result.new.validation_failure!(
         errors: {
           amount: ['invalid_amount'],
-          ranges: ['invalid_graduated_ranges'],
-        },
+          ranges: ['invalid_graduated_ranges']
+        }
       )
     end
 
@@ -94,8 +79,8 @@ RSpec.describe Charge, type: :model do
     let(:service_response) do
       BaseService::Result.new.validation_failure!(
         errors: {
-          amount: ['invalid_amount'],
-        },
+          amount: ['invalid_amount']
+        }
       )
     end
 
@@ -151,8 +136,8 @@ RSpec.describe Charge, type: :model do
         errors: {
           amount: ['invalid_amount'],
           free_units: ['invalid_free_units'],
-          package_size: ['invalid_package_size'],
-        },
+          package_size: ['invalid_package_size']
+        }
       )
     end
 
@@ -209,8 +194,8 @@ RSpec.describe Charge, type: :model do
           amount: ['invalid_fixed_amount'],
           free_units_per_events: ['invalid_free_units_per_events'],
           free_units_per_total_aggregation: ['invalid_free_units_per_total_aggregation'],
-          rate: ['invalid_rate'],
-        },
+          rate: ['invalid_rate']
+        }
       )
     end
 
@@ -267,8 +252,8 @@ RSpec.describe Charge, type: :model do
       BaseService::Result.new.validation_failure!(
         errors: {
           amount: ['invalid_amount'],
-          volume_ranges: ['invalid_volume_ranges'],
-        },
+          volume_ranges: ['invalid_volume_ranges']
+        }
       )
     end
 
@@ -312,6 +297,27 @@ RSpec.describe Charge, type: :model do
     end
   end
 
+  describe '#validate_dynamic' do
+    subject(:charge) { build(:dynamic_charge, billable_metric:) }
+
+    context 'with sum aggregation' do
+      let(:billable_metric) { create(:sum_billable_metric) }
+
+      it 'is valid' do
+        expect(charge).to be_valid
+      end
+    end
+
+    context 'with other aggregation' do
+      let(:billable_metric) { create(:latest_billable_metric) }
+
+      it 'is invalid' do
+        expect(charge).not_to be_valid
+        expect(charge.errors[:charge_model]).to include("invalid_aggregation_type_or_charge_model")
+      end
+    end
+  end
+
   describe '#validate_graduated_percentage' do
     subject(:charge) do
       build(:graduated_percentage_charge, properties: charge_properties)
@@ -326,8 +332,8 @@ RSpec.describe Charge, type: :model do
       BaseService::Result.new.validation_failure!(
         errors: {
           rate: ['invalid_rate'],
-          ranges: ['invalid_graduated_percentage_ranges'],
-        },
+          ranges: ['invalid_graduated_percentage_ranges']
+        }
       )
     end
 
@@ -424,6 +430,36 @@ RSpec.describe Charge, type: :model do
     end
   end
 
+  describe '#validate_regroup_paid_fees' do
+    context 'when regroup_paid_fees is nil' do
+      it 'does not return an error when' do
+        expect(build(:standard_charge, pay_in_advance: true, invoiceable: true, regroup_paid_fees: nil)).to be_valid
+        expect(build(:standard_charge, pay_in_advance: true, invoiceable: false, regroup_paid_fees: nil)).to be_valid
+        expect(build(:standard_charge, pay_in_advance: false, invoiceable: true, regroup_paid_fees: nil)).to be_valid
+        expect(build(:standard_charge, pay_in_advance: false, invoiceable: false, regroup_paid_fees: nil)).to be_valid
+      end
+    end
+
+    context 'when regroup_paid_fees is `invoice`' do
+      it 'requires charge to be pay_in_advance and non invoiceable' do
+        expect(build(:standard_charge, pay_in_advance: true, invoiceable: false, regroup_paid_fees: 'invoice')).to be_valid
+
+        [
+          {pay_in_advance: true, invoiceable: true},
+          {pay_in_advance: false, invoiceable: true},
+          {pay_in_advance: false, invoiceable: false}
+        ].each do |params|
+          charge = build(:standard_charge, regroup_paid_fees: 'invoice', **params)
+
+          aggregate_failures do
+            expect(charge).not_to be_valid
+            expect(charge.errors.messages[:regroup_paid_fees]).to include('only_compatible_with_pay_in_advance_and_non_invoiceable')
+          end
+        end
+      end
+    end
+  end
+
   describe '#validate_min_amount_cents' do
     it 'does not return an error' do
       expect(build(:standard_charge)).to be_valid
@@ -497,21 +533,6 @@ RSpec.describe Charge, type: :model do
     end
   end
 
-  describe '#validate_uniqueness_group_properties' do
-    subject(:charge) do
-      build(:standard_charge, group_properties: [build(:group_property, group:), build(:group_property, group:)])
-    end
-
-    let(:group) { create(:group) }
-
-    it 'returns an error for a duplicate' do
-      aggregate_failures do
-        expect(charge).not_to be_valid
-        expect(charge.errors.messages[:group_properties]).to include('is duplicated')
-      end
-    end
-  end
-
   describe '#validate_custom_model' do
     subject(:charge) { build(:charge, billable_metric:, charge_model: 'custom') }
 
@@ -521,6 +542,34 @@ RSpec.describe Charge, type: :model do
       aggregate_failures do
         expect(charge).not_to be_valid
         expect(charge.errors.messages[:charge_model]).to include('invalid_aggregation_type_or_charge_model')
+      end
+    end
+  end
+
+  describe '#equal_properties?' do
+    let(:charge1) { build(:standard_charge, properties: {amount: 100}) }
+
+    context 'when charge model is not the same' do
+      let(:charge2) { build(:percentage_charge) }
+
+      it 'returns false' do
+        expect(charge1.equal_properties?(charge2)).to eq(false)
+      end
+    end
+
+    context 'when charge model is the same and properties are different' do
+      let(:charge2) { build(:standard_charge, properties: {amount: 200}) }
+
+      it 'returns false if properties are not the same' do
+        expect(charge1.equal_properties?(charge2)).to eq(false)
+      end
+    end
+
+    context 'when charge model and properties are the same' do
+      let(:charge2) { build(:standard_charge, properties: {amount: 100}) }
+
+      it 'returns true if both charge model and properties are the same' do
+        expect(charge1.equal_properties?(charge2)).to eq(true)
       end
     end
   end

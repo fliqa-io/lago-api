@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
-require 'active_support/core_ext/integer/time'
+require "active_support/core_ext/integer/time"
 require 'opentelemetry/sdk'
 
 Rails.application.configure do
   config.middleware.use(ActionDispatch::Cookies)
   config.middleware.use(ActionDispatch::Session::CookieStore, key: '_lago_production')
 
-  config.cache_classes = true
+  config.enable_reloading = false
   config.eager_load = true
   config.consider_all_requests_local = false
   config.public_file_server.enabled = ENV['RAILS_SERVE_STATIC_FILES'].present?
@@ -29,6 +29,9 @@ Rails.application.configure do
   else
     :info
   end
+
+  config.assume_ssl = true
+  config.force_ssl = false
 
   config.log_tags = [:request_id]
   config.action_mailer.perform_caching = false
@@ -52,14 +55,15 @@ Rails.application.configure do
     cache_store_config = {
       url: ENV['LAGO_REDIS_CACHE_URL'],
       ssl_params: {
-        verify_mode: OpenSSL::SSL::VERIFY_NONE,
+        verify_mode: OpenSSL::SSL::VERIFY_NONE
       },
+      pool: {size: ENV.fetch('LAGO_REDIS_CACHE_POOL_SIZE', 5)},
       error_handler: lambda { |method:, returning:, exception:|
         Rails.logger.error(exception.message)
         Rails.logger.error(exception.backtrace.join("\n"))
 
         Sentry.capture_exception(exception)
-      },
+      }
     }
 
     if ENV['LAGO_REDIS_CACHE_PASSWORD'].present? && !ENV['LAGO_REDIS_CACHE_PASSWORD'].empty?
@@ -84,9 +88,7 @@ Rails.application.configure do
       user_name: ENV['LAGO_SMTP_USERNAME'],
       password: ENV['LAGO_SMTP_PASSWORD'],
       authentication: 'login',
-      enable_starttls_auto: true,
+      enable_starttls_auto: true
     }
   end
-
-  OpenTelemetry::SDK.configure(&:use_all) if ENV['OTEL_EXPORTER'].present?
 end

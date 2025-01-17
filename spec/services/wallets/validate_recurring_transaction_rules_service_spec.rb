@@ -10,7 +10,7 @@ RSpec.describe Wallets::ValidateRecurringTransactionRulesService, type: :service
   let(:organization) { membership.organization }
   let(:args) do
     {
-      recurring_transaction_rules: rules,
+      recurring_transaction_rules: rules
     }
   end
 
@@ -29,59 +29,23 @@ RSpec.describe Wallets::ValidateRecurringTransactionRulesService, type: :service
       let(:rules) do
         [
           {
-            rule_type: 'interval',
+            trigger: 'interval',
             interval: 'monthly',
             paid_credits: '105',
-            granted_credits: '105',
+            granted_credits: '105'
           },
           {
-            rule_type: 'threshold',
+            trigger: 'threshold',
             threshold_credits: '1.0',
             paid_credits: '105',
-            granted_credits: '105',
-          },
+            granted_credits: '105'
+          }
         ]
       end
 
       it 'returns false and result has errors' do
         expect(validate_service).not_to be_valid
         expect(result.error.messages[:recurring_transaction_rules]).to eq(['invalid_number_of_recurring_rules'])
-      end
-    end
-
-    context 'when invalid interval' do
-      let(:rules) do
-        [
-          {
-            rule_type: 'interval',
-            interval: 'invalid',
-            paid_credits: '105',
-            granted_credits: '105',
-          },
-        ]
-      end
-
-      it 'returns false and result has errors' do
-        expect(validate_service).not_to be_valid
-        expect(result.error.messages[:recurring_transaction_rules]).to eq(['invalid_recurring_rule'])
-      end
-    end
-
-    context 'when invalid threshold credits' do
-      let(:rules) do
-        [
-          {
-            rule_type: 'threshold',
-            threshold_credits: 'invalid',
-            paid_credits: '105',
-            granted_credits: '105',
-          },
-        ]
-      end
-
-      it 'returns false and result has errors' do
-        expect(validate_service).not_to be_valid
-        expect(result.error.messages[:recurring_transaction_rules]).to eq(['invalid_recurring_rule'])
       end
     end
   end

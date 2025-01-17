@@ -35,11 +35,11 @@ module CreditNotes
           reason:,
           description:,
           credit_status: 'available',
-          status: invoice.status,
+          status: invoice.status
         )
 
         create_items
-        return result unless result.success?
+        result.raise_if_error!
 
         compute_amounts_and_taxes
 
@@ -51,15 +51,27 @@ module CreditNotes
 
         credit_note.update!(
           total_amount_cents: credit_note.credit_amount_cents + credit_note.refund_amount_cents,
-          balance_amount_cents: credit_note.credit_amount_cents,
+          balance_amount_cents: credit_note.credit_amount_cents
         )
+        if invoice.credit?
+          WalletTransactions::VoidService.call(wallet: associated_wallet,
+            credits_amount: voiding_credits, credit_note_id: credit_note.id)
+        end
       end
 
       if credit_note.finalized?
-        track_credit_note_created
-        deliver_webhook
-        deliver_email
-        handle_refund if should_handle_refund?
+        after_commit do
+          track_credit_note_created
+          deliver_webhook
+          CreditNotes::GeneratePdfJob.perform_later(credit_note)
+          deliver_email
+          handle_refund if should_handle_refund?
+          report_to_tax_provider
+
+          if credit_note.should_sync_credit_note?
+            Integrations::Aggregator::CreditNotes::CreateJob.perform_later(credit_note:)
+          end
+        end
       end
 
       result
@@ -67,8 +79,8 @@ module CreditNotes
       result.record_validation_failure!(record: e.record)
     rescue ArgumentError
       result.single_validation_failure!(field: :reason, error_code: 'value_is_invalid')
-    rescue BaseService::ValidationFailure
-      result
+    rescue BaseService::FailedResult => e
+      e.result
     end
 
     private
@@ -94,7 +106,7 @@ module CreditNotes
 
     def valid_type_or_status?
       return true if automatic
-      return false if invoice.credit?
+      return false if invoice.credit? && (invoice.payment_status != 'succeeded' || associated_wallet.nil?)
 
       invoice.version_number >= Invoice::CREDIT_NOTES_MIN_VERSION
     end
@@ -112,7 +124,7 @@ module CreditNotes
           fee: invoice.fees.find_by(id: item_attr[:fee_id]),
           amount_cents: amount_cents.round,
           precise_amount_cents: amount_cents,
-          amount_currency: invoice.currency,
+          amount_currency: invoice.currency
         )
         break unless valid_item?(item)
 
@@ -144,15 +156,15 @@ module CreditNotes
           organization_id: credit_note.organization.id,
           credit_note_id: credit_note.id,
           invoice_id: credit_note.invoice_id,
-          credit_note_method: types,
-        },
+          credit_note_method: types
+        }
       )
     end
 
     def deliver_webhook
       SendWebhookJob.perform_later(
         'credit_note.created',
-        credit_note,
+        credit_note
       )
     end
 
@@ -166,7 +178,7 @@ module CreditNotes
 
     def should_handle_refund?
       return false unless credit_note.refunded?
-      return false unless credit_note.invoice.succeeded?
+      return false unless credit_note.invoice.payment_succeeded?
 
       invoice_payment.present?
     end
@@ -186,19 +198,51 @@ module CreditNotes
       end
     end
 
+    def report_to_tax_provider
+      CreditNotes::ProviderTaxes::ReportJob.perform_later(credit_note:)
+    end
+
     def compute_amounts_and_taxes
       taxes_result = CreditNotes::ApplyTaxesService.call(
         invoice:,
-        items: credit_note.items,
+        items: credit_note.items
       )
 
       credit_note.precise_coupons_adjustment_amount_cents = taxes_result.coupons_adjustment_amount_cents
       credit_note.coupons_adjustment_amount_cents = taxes_result.coupons_adjustment_amount_cents.round
       credit_note.precise_taxes_amount_cents = taxes_result.taxes_amount_cents
-      credit_note.taxes_amount_cents = taxes_result.taxes_amount_cents.round
+      adjust_credit_note_tax_rounding if credit_note_for_all_remaining_amount?
+
+      credit_note.taxes_amount_cents = credit_note.precise_taxes_amount_cents.round
       credit_note.taxes_rate = taxes_result.taxes_rate
 
       taxes_result.applied_taxes.each { |applied_tax| credit_note.applied_taxes << applied_tax }
+    end
+
+    def credit_note_for_all_remaining_amount?
+      credit_note.invoice.creditable_amount_cents == 0
+    end
+
+    def adjust_credit_note_tax_rounding
+      credit_note.precise_taxes_amount_cents -= all_rounding_tax_adjustments
+    end
+
+    def all_rounding_tax_adjustments
+      credit_note.invoice.credit_notes.sum(&:taxes_rounding_adjustment)
+    end
+
+    def associated_wallet
+      @associated_wallet ||= invoice.associated_active_wallet
+    end
+
+    def voiding_credits
+      return 0 unless invoice.credit? && associated_wallet.present?
+
+      # wallet transactions don't have cents amount, so we have to convert value into full amount
+      # and then convert money into amount of credits
+      amount_cents = credit_note.refund_amount_cents
+      amount = amount_cents.fdiv(credit_note.refund_amount.currency.subunit_to_unit)
+      amount.fdiv(associated_wallet.rate_amount)
     end
   end
 end

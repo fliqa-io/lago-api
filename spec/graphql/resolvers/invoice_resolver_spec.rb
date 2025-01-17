@@ -108,8 +108,8 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
       permissions: required_permission,
       query:,
       variables: {
-        id: invoice.id,
-      },
+        id: invoice.id
+      }
     )
 
     data = result['data']['invoice']
@@ -139,7 +139,7 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
       current_organization: organization,
       permissions: required_permission,
       query:,
-      variables: {id: invoice.id},
+      variables: {id: invoice.id}
     )
 
     fee = result['data']['invoice']['invoiceSubscriptions'][0]['fees'][0]
@@ -154,8 +154,8 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
         permissions: required_permission,
         query:,
         variables: {
-          id: 'foo',
-        },
+          id: 'foo'
+        }
       )
 
       expect_graphql_error(result:, message: 'Resource not found')
@@ -174,7 +174,7 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
         :deleted,
         charge_filter:,
         billable_metric_filter:,
-        values: [billable_metric_filter.values.first],
+        values: [billable_metric_filter.values.first]
       )
     end
     let(:fee) { create(:charge_fee, subscription:, invoice:, charge_filter:, charge:, amount_cents: 10) }
@@ -190,8 +190,8 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
         permissions: required_permission,
         query:,
         variables: {
-          id: invoice.id,
-        },
+          id: invoice.id
+        }
       )
 
       data = result['data']['invoice']
@@ -222,8 +222,8 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
         permissions: required_permission,
         query:,
         variables: {
-          id: invoice.id,
-        },
+          id: invoice.id
+        }
       )
 
       data = result['data']['invoice']
@@ -237,7 +237,7 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
         expect(data['customer']['name']).to eq(customer.name)
         expect(data['fees'].first).to include(
           'itemCode' => add_on.code,
-          'itemName' => add_on.name,
+          'itemName' => add_on.name
         )
       end
     end
@@ -252,8 +252,8 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
           permissions: required_permission,
           query:,
           variables: {
-            id: invoice.id,
-          },
+            id: invoice.id
+          }
         )
 
         data = result['data']['invoice']
@@ -268,7 +268,7 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
           expect(data['fees'].first).to include(
             'itemType' => 'add_on',
             'itemCode' => add_on.code,
-            'itemName' => add_on.name,
+            'itemName' => add_on.name
           )
         end
       end
@@ -285,8 +285,8 @@ RSpec.describe Resolvers::InvoiceResolver, type: :graphql do
         permissions: required_permission,
         query:,
         variables: {
-          id: invoice.id,
-        },
+          id: invoice.id
+        }
       )
 
       data = result['data']['invoice']

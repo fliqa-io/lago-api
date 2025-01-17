@@ -29,13 +29,15 @@ RSpec.describe Fees::PaidCreditService do
         invoiceable_type: 'WalletTransaction',
         invoiceable_id: wallet_transaction.id,
         amount_cents: 1500,
+        precise_amount_cents: 1500.0,
         amount_currency: 'EUR',
         taxes_amount_cents: 0,
+        taxes_precise_amount_cents: 0.0,
         taxes_rate: 0,
         unit_amount_cents: 100,
         units: 15,
         payment_status: 'pending',
-        precise_unit_amount: 1,
+        precise_unit_amount: 1
       )
     end
 
@@ -45,7 +47,7 @@ RSpec.describe Fees::PaidCreditService do
           :fee,
           invoiceable_type: 'WalletTransaction',
           invoiceable_id: wallet_transaction.id,
-          invoice:,
+          invoice:
         )
       end
 

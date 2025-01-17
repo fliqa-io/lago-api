@@ -33,8 +33,8 @@ RSpec.describe Mutations::Wallets::Terminate, type: :graphql do
       permissions: required_permission,
       query: mutation,
       variables: {
-        input: {id: wallet.id},
-      },
+        input: {id: wallet.id}
+      }
     )
 
     data = result['data']['terminateCustomerWallet']

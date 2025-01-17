@@ -7,7 +7,11 @@ RSpec.describe Types::Customers::Object do
 
   it { is_expected.to have_field(:id).of_type('ID!') }
 
+  it { is_expected.to have_field(:customer_type).of_type(Types::Customers::CustomerTypeEnum) }
+  it { is_expected.to have_field(:display_name).of_type('String!') }
   it { is_expected.to have_field(:external_id).of_type('String!') }
+  it { is_expected.to have_field(:firstname).of_type('String') }
+  it { is_expected.to have_field(:lastname).of_type('String') }
   it { is_expected.to have_field(:name).of_type('String') }
   it { is_expected.to have_field(:sequential_id).of_type('String!') }
   it { is_expected.to have_field(:slug).of_type('String!') }
@@ -39,9 +43,15 @@ RSpec.describe Types::Customers::Object do
 
   it { is_expected.to have_field(:billing_configuration).of_type('CustomerBillingConfiguration') }
 
+  it { is_expected.to have_field(:shipping_address).of_type('CustomerAddress') }
+
+  it { is_expected.to have_field(:anrok_customer).of_type('AnrokCustomer') }
+  it { is_expected.to have_field(:hubspot_customer).of_type('HubspotCustomer') }
   it { is_expected.to have_field(:netsuite_customer).of_type('NetsuiteCustomer') }
+  it { is_expected.to have_field(:salesforce_customer).of_type('SalesforceCustomer') }
   it { is_expected.to have_field(:provider_customer).of_type('ProviderCustomer') }
   it { is_expected.to have_field(:subscriptions).of_type('[Subscription!]!') }
+  it { is_expected.to have_field(:xero_customer).of_type('XeroCustomer') }
 
   it { is_expected.to have_field(:invoices).of_type('[Invoice!]') }
 
@@ -60,6 +70,13 @@ RSpec.describe Types::Customers::Object do
   it { is_expected.to have_field(:credit_notes_credits_available_count).of_type('Int!') }
   it { is_expected.to have_field(:has_active_wallet).of_type('Boolean!') }
   it { is_expected.to have_field(:has_credit_notes).of_type('Boolean!') }
+  it { is_expected.to have_field(:has_overdue_invoices).of_type('Boolean!') }
 
   it { is_expected.to have_field(:can_edit_attributes).of_type('Boolean!') }
+  it { is_expected.to have_field(:finalize_zero_amount_invoice).of_type('FinalizeZeroAmountInvoiceEnum') }
+
+  it { is_expected.to have_field(:applied_dunning_campaign).of_type("DunningCampaign") }
+  it { is_expected.to have_field(:exclude_from_dunning_campaign).of_type("Boolean!") }
+  it { is_expected.to have_field(:last_dunning_campaign_attempt).of_type("Int!") }
+  it { is_expected.to have_field(:last_dunning_campaign_attempt_at).of_type("ISO8601DateTime") }
 end

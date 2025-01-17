@@ -17,8 +17,8 @@ module Mutations
 
       def resolve(**args)
         result = ::Invoices::LoseDisputeService.call(
-          invoice: current_organization.invoices.not_generating.find_by(id: args[:id]),
-          payment_dispute_lost_at: DateTime.current,
+          invoice: current_organization.invoices.visible.find_by(id: args[:id]),
+          payment_dispute_lost_at: DateTime.current
         )
         result.success? ? result.invoice : result_error(result)
       end

@@ -7,6 +7,8 @@ module BillableMetrics
       BATCH_SIZE = 1000
 
       def compute_aggregation(options: {})
+        return empty_result if should_bypass_aggregation?
+
         result.count = event_store.count
 
         aggregation_result = perform_custom_aggregation(grouped_by_values:)
@@ -33,6 +35,8 @@ module BillableMetrics
       #       as pay in advance aggregation will be computed on a single group
       #       with the grouped_by_values filter
       def compute_grouped_by_aggregation(options: {})
+        return empty_results if should_bypass_aggregation?
+
         counts = event_store.grouped_count
         return empty_results if counts.blank?
 
@@ -46,7 +50,7 @@ module BillableMetrics
 
           aggregation_result = perform_custom_aggregation(
             target_result: group_result,
-            grouped_by_values: aggregation[:groups],
+            grouped_by_values: aggregation[:groups]
           )
 
           group_result.aggregation = aggregation_result[:total_units]
@@ -66,7 +70,7 @@ module BillableMetrics
         result
       end
 
-      def compute_per_event_aggregation
+      def compute_per_event_aggregation(exclude_event:)
         # TODO: Implement custom aggregation logic returning 1 value per event
         event_store.events_properties
       end
@@ -100,7 +104,7 @@ module BillableMetrics
         if cached_aggregation
           return {
             total_units: cached_aggregation.current_aggregation,
-            amount: cached_aggregation.current_amount,
+            amount: cached_aggregation.current_amount
           }
         end
 
@@ -122,13 +126,13 @@ module BillableMetrics
             code: billable_metric.code,
             subscription:,
             boundaries:,
-            filters: filters.merge(grouped_by_values:),
+            filters: filters.merge(grouped_by_values:)
           )
         end
 
         # NOTE: Loop over events by batch
         (1..total_batches).each do |batch|
-          events_properties = store.events.page(batch).per(BATCH_SIZE)
+          events_properties = store.events(ordered: true).page(batch).per(BATCH_SIZE)
             .map { |event| {timestamp: event.timestamp, properties: event.properties} }
 
           state = sandboxed_aggregation(events_properties, state)
@@ -142,7 +146,7 @@ module BillableMetrics
 
         {
           total_units: BigDecimal(sandboxed_result['total_units'].to_s),
-          amount: BigDecimal(sandboxed_result['amount'].to_s),
+          amount: BigDecimal(sandboxed_result['amount'].to_s)
         }
       end
 
@@ -189,7 +193,7 @@ module BillableMetrics
         cached_aggregation = find_cached_aggregation(
           with_from_datetime: from_datetime,
           with_to_datetime: to_datetime,
-          grouped_by: grouped_by_values,
+          grouped_by: grouped_by_values
         )
 
         # NOTE: The aggregation was never performed on the period,
@@ -201,7 +205,7 @@ module BillableMetrics
             current_aggregation: state[:total_units],
             max_aggregation: state[:total_units],
             units_applied: state[:total_units],
-            current_amount: state[:amount],
+            current_amount: state[:amount]
           )
 
           return state
@@ -215,7 +219,7 @@ module BillableMetrics
         # NOTE: compute aggregation for the current event, using the previous state
         event_aggregation = sandboxed_aggregation(
           [{timestamp: event.timestamp, properties: event.properties}],
-          {total_units: old_aggregation, amount: old_amount},
+          {total_units: old_aggregation, amount: old_amount}
         )
 
         units_applied = event_aggregation[:total_units] - old_aggregation
@@ -230,13 +234,13 @@ module BillableMetrics
           current_aggregation: event_aggregation[:total_units],
           max_aggregation:,
           units_applied:,
-          current_amount: event_aggregation[:amount],
+          current_amount: event_aggregation[:amount]
         )
 
         # NOTE: Return the amount and units to be charged for the current event
         {
           total_units: units_applied,
-          amount: event_aggregation[:amount] - old_amount,
+          amount: event_aggregation[:amount] - old_amount
         }
       end
 

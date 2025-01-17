@@ -11,7 +11,9 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
 
   around { |test| lago_premium!(&test) }
 
-  describe 'create' do
+  describe 'POST /api/v1/subscriptions' do
+    subject { post_with_token(organization, '/api/v1/subscriptions', {subscription: params}) }
+
     let(:subscription_at) { Time.current.iso8601 }
     let(:ending_at) { (Time.current + 1.year).iso8601 }
     let(:plan_code) { plan.code }
@@ -30,17 +32,27 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
           name: 'overridden name',
           minimum_commitment: {
             invoice_display_name: commitment_invoice_display_name,
-            amount_cents: commitment_amount_cents,
+            amount_cents: commitment_amount_cents
           },
-        },
+          usage_thresholds: [
+            amount_cents: override_amount_cents,
+            threshold_display_name: override_display_name
+          ]
+        }
       }
     end
+
+    let(:override_amount_cents) { 777 }
+    let(:override_display_name) { 'Overriden Threshold 12' }
+
+    include_examples 'requires API permission', 'subscription', 'write'
 
     it 'returns a success', :aggregate_failures do
       create(:plan, code: plan.code, parent_id: plan.id, organization:, description: 'foo')
 
       freeze_time do
-        post_with_token(organization, '/api/v1/subscriptions', {subscription: params})
+        subject
+
         expect(response).to have_http_status(:ok)
         expect(json[:subscription]).to include(
           lago_id: String,
@@ -56,16 +68,35 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
           ending_at: (Time.current + 1.year).iso8601,
           previous_plan_code: nil,
           next_plan_code: nil,
-          downgrade_plan_date: nil,
+          downgrade_plan_date: nil
         )
         expect(json[:subscription][:plan]).to include(
           amount_cents: 100,
           name: 'overridden name',
-          description: 'desc',
+          description: 'desc'
         )
         expect(json[:subscription][:plan][:minimum_commitment]).to include(
           invoice_display_name: commitment_invoice_display_name,
-          amount_cents: commitment_amount_cents,
+          amount_cents: commitment_amount_cents
+        )
+      end
+    end
+
+    context 'when progressive billing premium integration is present' do
+      around { |test| lago_premium!(&test) }
+
+      before do
+        organization.update!(premium_integrations: ['progressive_billing'])
+      end
+
+      it 'creates subscription with an overriden plan with usage thresholds' do
+        subject
+
+        expect(response).to have_http_status(:ok)
+
+        expect(json[:subscription][:plan][:usage_thresholds].first).to include(
+          amount_cents: override_amount_cents,
+          threshold_display_name: override_display_name
         )
       end
     end
@@ -76,20 +107,37 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
           external_customer_id: 123,
           plan_code:,
           name: 456,
-          external_id: 789,
+          external_id: 789
         }
       end
 
       it 'returns a success' do
-        post_with_token(organization, '/api/v1/subscriptions', {subscription: params})
+        subject
 
         expect(response).to have_http_status(:ok)
         expect(json[:subscription]).to include(
           lago_id: String,
           external_customer_id: '123',
           name: '456',
-          external_id: '789',
+          external_id: '789'
         )
+      end
+    end
+
+    context 'without external_customer_id', :aggregate_failures do
+      let(:params) do
+        {
+          plan_code:,
+          name: 'subscription name',
+          external_id: SecureRandom.uuid
+        }
+      end
+
+      it 'returns an unprocessable_entity error' do
+        subject
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json[:error_details]).to eq({external_customer_id: %w[value_is_mandatory]})
       end
     end
 
@@ -97,8 +145,7 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
       let(:plan_code) { "#{plan.code}-invalid" }
 
       it 'returns a not_found error' do
-        post_with_token(organization, '/api/v1/subscriptions', {subscription: params})
-
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -107,8 +154,7 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
       let(:subscription_at) { 'hello' }
 
       it 'returns an unprocessable_entity error' do
-        post_with_token(organization, '/api/v1/subscriptions', {subscription: params})
-
+        subject
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
@@ -121,12 +167,12 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
           name: 'subscription name',
           external_id: SecureRandom.uuid,
           billing_time: 'anniversary',
-          subscription_date: subscription_at.to_date,
+          subscription_at: subscription_at
         }
       end
 
       it 'returns a success' do
-        post_with_token(organization, '/api/v1/subscriptions', {subscription: params})
+        subject
 
         expect(response).to have_http_status(:ok)
 
@@ -139,8 +185,7 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
         expect(json[:subscription][:name]).to eq('subscription name')
         expect(json[:subscription][:started_at]).to be_present
         expect(json[:subscription][:billing_time]).to eq('anniversary')
-        expect(json[:subscription][:subscription_at]).to eq(Time.current.beginning_of_day.iso8601)
-        expect(json[:subscription][:subscription_date].to_s).to eq(Time.current.to_date.to_s)
+        expect(json[:subscription][:subscription_at]).to eq(Time.zone.parse(subscription_at).iso8601)
         expect(json[:subscription][:previous_plan_code]).to be_nil
         expect(json[:subscription][:next_plan_code]).to be_nil
         expect(json[:subscription][:downgrade_plan_date]).to be_nil
@@ -148,13 +193,16 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
     end
   end
 
-  describe 'delete /subscriptions/:id' do
-    let(:subscription) { create(:subscription, customer:, plan:) }
+  describe 'DELETE /api/v1subscriptions/:external_id' do
+    subject { delete_with_token(organization, "/api/v1/subscriptions/#{external_id}") }
 
-    before { subscription }
+    let(:subscription) { create(:subscription, customer:, plan:) }
+    let(:external_id) { subscription.external_id }
+
+    include_examples 'requires API permission', 'subscription', 'write'
 
     it 'terminates a subscription' do
-      delete_with_token(organization, "/api/v1/subscriptions/#{subscription.external_id}")
+      subject
 
       expect(response).to have_http_status(:success)
       expect(json[:subscription][:lago_id]).to eq(subscription.id)
@@ -163,16 +211,28 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
     end
 
     context 'with not existing subscription' do
-      it 'returns a not found error' do
-        delete_with_token(organization, '/api/v1/subscriptions/123456')
+      let(:external_id) { SecureRandom.uuid }
 
+      it 'returns a not found error' do
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
   end
 
-  describe 'update' do
+  describe 'PUT /api/v1/subscriptions/:external_id' do
+    subject do
+      put_with_token(
+        organization,
+        "/api/v1/subscriptions/#{external_id}",
+        params
+      )
+    end
+
+    let(:params) { {subscription: update_params} }
     let(:subscription) { create(:subscription, :pending, customer:, plan:) }
+    let(:external_id) { subscription.external_id }
+
     let(:update_params) do
       {
         name: 'subscription name new',
@@ -181,16 +241,30 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
           name: 'plan new name',
           minimum_commitment: {
             invoice_display_name: commitment_invoice_display_name,
-            amount_cents: 1234,
+            amount_cents: 1234
           },
-        },
+          usage_thresholds: [
+            id: usage_threshold.id,
+            amount_cents: override_amount_cents,
+            threshold_display_name: override_display_name
+          ]
+        }
       }
     end
 
-    before { subscription }
+    let(:override_amount_cents) { 999 }
+    let(:override_display_name) { 'Overriden Threshold 1' }
+    let(:usage_threshold) { create(:usage_threshold, plan:) }
+
+    before do
+      subscription
+      usage_threshold
+    end
+
+    include_examples 'requires API permission', 'subscription', 'write'
 
     it 'updates a subscription', :aggregate_failures do
-      put_with_token(organization, "/api/v1/subscriptions/#{subscription.external_id}", {subscription: update_params})
+      subject
 
       expect(response).to have_http_status(:success)
       expect(json[:subscription][:lago_id]).to eq(subscription.id)
@@ -198,19 +272,39 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
       expect(json[:subscription][:subscription_at].to_s).to eq('2022-09-05T12:23:12Z')
 
       expect(json[:subscription][:plan]).to include(
-        name: 'plan new name',
+        name: 'plan new name'
       )
 
       expect(json[:subscription][:plan][:minimum_commitment]).to include(
         invoice_display_name: commitment_invoice_display_name,
-        amount_cents: commitment_amount_cents,
+        amount_cents: commitment_amount_cents
       )
     end
 
-    context 'with not existing subscription' do
-      it 'returns an not found error' do
-        put_with_token(organization, '/api/v1/subscriptions/invalid', {subscription: update_params})
+    context 'when progressive billing premium integration is present' do
+      around { |test| lago_premium!(&test) }
 
+      before do
+        organization.update!(premium_integrations: ['progressive_billing'])
+      end
+
+      it 'updates subscription with an overriden plan with usage thresholds' do
+        subject
+
+        expect(response).to have_http_status(:success)
+
+        expect(json[:subscription][:plan][:usage_thresholds].first).to include(
+          amount_cents: override_amount_cents,
+          threshold_display_name: override_display_name
+        )
+      end
+    end
+
+    context 'with not existing subscription' do
+      let(:external_id) { SecureRandom.uuid }
+
+      it 'returns an not found error' do
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -224,28 +318,22 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
       before { active_subscription }
 
       it 'updates the active subscription', :aggregate_failures do
-        put_with_token(
-          organization,
-          "/api/v1/subscriptions/#{subscription.external_id}",
-          {subscription: update_params},
-        )
+        subject
 
         expect(response).to have_http_status(:success)
         expect(json[:subscription][:lago_id]).to eq(active_subscription.id)
         expect(json[:subscription][:name]).to eq('subscription name new')
 
         expect(json[:subscription][:plan]).to include(
-          name: 'plan new name',
+          name: 'plan new name'
         )
       end
 
       context 'with pending params' do
+        let(:params) { {subscription: update_params, status: 'pending'} }
+
         it 'updates the pending subscription' do
-          put_with_token(
-            organization,
-            "/api/v1/subscriptions/#{subscription.external_id}",
-            {subscription: update_params, status: 'pending'},
-          )
+          subject
 
           expect(response).to have_http_status(:success)
           expect(json[:subscription][:lago_id]).to eq(subscription.id)
@@ -253,58 +341,77 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
           expect(json[:subscription][:subscription_at].to_s).to eq('2022-09-05T12:23:12Z')
 
           expect(json[:subscription][:plan]).to include(
-            name: 'plan new name',
+            name: 'plan new name'
           )
         end
       end
     end
   end
 
-  describe 'show' do
+  describe 'GET /api/v1/subscriptions/:external_id' do
+    subject do
+      get_with_token(organization, "/api/v1/subscriptions/#{external_id}", params)
+    end
+
+    let(:params) { {} }
     let(:subscription) { create(:subscription, customer:, plan:) }
+    let(:external_id) { subscription.external_id }
+
+    include_examples 'requires API permission', 'subscription', 'read'
 
     it 'returns a subscription' do
-      get_with_token(organization, "/api/v1/subscriptions/#{subscription.external_id}")
+      subject
 
       expect(response).to have_http_status(:success)
       expect(json[:subscription]).to include(
         lago_id: subscription.id,
-        external_id: subscription.external_id,
+        external_id: subscription.external_id
       )
     end
 
     context 'when subscription does not exist' do
+      let(:external_id) { SecureRandom.uuid }
+
       it 'returns not found' do
-        get_with_token(organization, '/api/v1/subscriptions/555')
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
 
     context 'when status is given' do
+      let(:params) { {status: 'pending'} }
+
+      let!(:matching_subscription) do
+        create(:subscription, customer:, plan:, status: :pending, external_id: subscription.external_id)
+      end
+
       it 'returns the subscription with the given status' do
-        pending = create(:subscription, customer:, plan:, status: :pending, external_id: subscription.external_id)
-        get_with_token(organization, "/api/v1/subscriptions/#{subscription.external_id}?status=pending")
+        subject
 
         expect(response).to have_http_status(:success)
         expect(json[:subscription]).to include(
-          lago_id: pending.id,
-          external_id: pending.external_id,
+          lago_id: matching_subscription.id,
+          external_id: matching_subscription.external_id
         )
       end
     end
   end
 
-  describe 'index' do
-    let(:subscription1) { create(:subscription, customer:, plan:) }
+  describe 'GET /api/v1/subscriptions' do
+    subject { get_with_token(organization, "/api/v1/subscriptions", params) }
 
-    before { subscription1 }
+    let!(:subscription) { create(:subscription, customer:, plan:) }
+    let(:params) { {external_customer_id: external_customer_id} }
+    let(:external_customer_id) { customer.external_id }
+
+    include_examples 'requires API permission', 'subscription', 'read'
 
     it 'returns subscriptions' do
-      get_with_token(organization, "/api/v1/subscriptions?external_customer_id=#{customer.external_id}")
+      subject
 
       expect(response).to have_http_status(:success)
       expect(json[:subscriptions].count).to eq(1)
-      expect(json[:subscriptions].first[:lago_id]).to eq(subscription1.id)
+      expect(json[:subscriptions].first[:lago_id]).to eq(subscription.id)
     end
 
     context 'with next and previous subscriptions' do
@@ -313,7 +420,7 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
           :subscription,
           customer:,
           plan: create(:plan, organization:),
-          status: :terminated,
+          status: :terminated
         )
       end
 
@@ -322,16 +429,16 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
           :subscription,
           customer:,
           plan: create(:plan, organization:),
-          status: :pending,
+          status: :pending
         )
       end
 
       before do
-        subscription1.update!(previous_subscription:, next_subscriptions: [next_subscription])
+        subscription.update!(previous_subscription:, next_subscriptions: [next_subscription])
       end
 
       it 'returns next and previous plan code' do
-        get_with_token(organization, "/api/v1/subscriptions?external_customer_id=#{customer.external_id}")
+        subject
 
         subscription = json[:subscriptions].first
         expect(subscription[:previous_plan_code]).to eq(previous_subscription.plan.code)
@@ -342,7 +449,7 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
         current_date = DateTime.parse('20 Jun 2022')
 
         travel_to(current_date) do
-          get_with_token(organization, "/api/v1/subscriptions?external_customer_id=#{customer.external_id}")
+          subject
 
           subscription = json[:subscriptions].first
           expect(subscription[:downgrade_plan_date]).to eq('2022-07-01')
@@ -351,16 +458,21 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
     end
 
     context 'with pagination' do
-      let(:plan2) { create(:plan, organization:, amount_cents: 30_000) }
-      let(:subscription2) { create(:subscription, customer:, plan: plan2) }
+      let(:params) do
+        {
+          external_customer_id:,
+          page: 1,
+          per_page: 1
+        }
+      end
 
-      before { subscription2 }
+      before do
+        another_plan = create(:plan, organization:, amount_cents: 30_000)
+        create(:subscription, customer:, plan: another_plan)
+      end
 
       it 'returns subscriptions with correct meta data' do
-        get_with_token(
-          organization,
-          "/api/v1/subscriptions?external_customer_id=#{customer.external_id}&page=1&per_page=1",
-        )
+        subject
 
         expect(response).to have_http_status(:success)
 
@@ -374,26 +486,35 @@ RSpec.describe Api::V1::SubscriptionsController, type: :request do
     end
 
     context 'with plan code' do
+      let(:params) { {plan_code: plan.code} }
+
       it 'returns subscriptions' do
-        get_with_token(organization, "/api/v1/subscriptions?plan_code=#{plan.code}")
+        subject
 
         expect(response).to have_http_status(:success)
         expect(json[:subscriptions].count).to eq(1)
-        expect(json[:subscriptions].first[:lago_id]).to eq(subscription1.id)
+        expect(json[:subscriptions].first[:lago_id]).to eq(subscription.id)
       end
     end
 
     context 'with terminated status' do
-      let(:subscription3) { create(:subscription, customer:, plan: create(:plan, organization:), status: :terminated) }
+      let!(:terminated_subscription) do
+        create(:subscription, customer:, plan: create(:plan, organization:), status: :terminated)
+      end
 
-      before { subscription3 }
+      let(:params) do
+        {
+          external_customer_id:,
+          status: ['terminated']
+        }
+      end
 
       it 'returns terminated subscriptions' do
-        get_with_token(organization, "/api/v1/subscriptions?external_customer_id=#{customer.external_id}&status[]=terminated")
+        subject
 
         expect(response).to have_http_status(:success)
         expect(json[:subscriptions].count).to eq(1)
-        expect(json[:subscriptions].first[:lago_id]).to eq(subscription3.id)
+        expect(json[:subscriptions].first[:lago_id]).to eq(terminated_subscription.id)
       end
     end
   end

@@ -2,9 +2,14 @@
 
 require 'rails_helper'
 
-RSpec.describe Invoices::CustomerUsageService, type: :service do
+RSpec.describe Invoices::CustomerUsageService, type: :service, cache: :memory do
   subject(:usage_service) do
-    described_class.new(membership.user, customer_id:, subscription_id:)
+    described_class.with_ids(
+      organization_id: membership.organization_id,
+      customer_id:,
+      subscription_id:,
+      apply_taxes:
+    )
   end
 
   let(:membership) { create(:membership) }
@@ -15,13 +20,14 @@ RSpec.describe Invoices::CustomerUsageService, type: :service do
   let(:subscription_id) { subscription&.id }
   let(:plan) { create(:plan, interval: 'monthly') }
   let(:timestamp) { Time.current }
+  let(:apply_taxes) { true }
 
   let(:subscription) do
     create(
       :subscription,
       plan:,
       customer:,
-      started_at: Time.zone.now - 2.years,
+      started_at: Time.zone.now - 2.years
     )
   end
 
@@ -34,7 +40,7 @@ RSpec.describe Invoices::CustomerUsageService, type: :service do
       :standard_charge,
       plan:,
       billable_metric:,
-      properties: {amount: '12.66'},
+      properties: {amount: '12.66'}
     )
   end
 
@@ -46,18 +52,14 @@ RSpec.describe Invoices::CustomerUsageService, type: :service do
       subscription:,
       customer:,
       code: billable_metric.code,
-      timestamp:,
+      timestamp:
     )
   end
-
-  let(:memory_store) { ActiveSupport::Cache.lookup_store(:memory_store) }
-  let(:cache) { Rails.cache }
 
   describe '#call' do
     before do
       events if subscription
       charge
-      allow(Rails).to receive(:cache).and_return(memory_store)
       Rails.cache.clear
 
       tax
@@ -66,14 +68,15 @@ RSpec.describe Invoices::CustomerUsageService, type: :service do
     it 'uses the Rails cache' do
       key = [
         'charge-usage',
+        Subscriptions::ChargeCacheService::CACHE_KEY_VERSION,
         charge.id,
         subscription.id,
-        charge.updated_at.iso8601,
+        charge.updated_at.iso8601
       ].join('/')
 
       expect do
         usage_service.call
-      end.to change { cache.exist?(key) }.from(false).to(true)
+      end.to change { Rails.cache.exist?(key) }.from(false).to(true)
     end
 
     it 'initializes an invoice' do
@@ -90,10 +93,115 @@ RSpec.describe Invoices::CustomerUsageService, type: :service do
           currency: 'EUR',
           amount_cents: 2532, # 1266 * 2,
           taxes_amount_cents: 506, # 1266 * 2 * 0.2 = 506.4
-          total_amount_cents: 3038,
+          total_amount_cents: 3038
         )
         expect(result.usage.fees.size).to eq(1)
         expect(result.usage.fees.first.charge.invoice_display_name).to eq(charge.invoice_display_name)
+      end
+    end
+
+    context 'when apply_taxes property is set to false' do
+      let(:apply_taxes) { false }
+
+      it 'initializes an invoice' do
+        result = usage_service.call
+
+        aggregate_failures do
+          expect(result).to be_success
+          expect(result.invoice).to be_a(Invoice)
+
+          expect(result.usage).to have_attributes(
+            from_datetime: Time.current.beginning_of_month.iso8601,
+            to_datetime: Time.current.end_of_month.iso8601,
+            issuing_date: Time.zone.today.end_of_month.iso8601,
+            currency: 'EUR',
+            amount_cents: 2532, # 1266 * 2,
+            taxes_amount_cents: 0,
+            total_amount_cents: 2532
+          )
+          expect(result.usage.fees.size).to eq(1)
+          expect(result.usage.fees.first.charge.invoice_display_name).to eq(charge.invoice_display_name)
+        end
+      end
+    end
+
+    context 'when there is tax provider integration' do
+      let(:integration) { create(:anrok_integration, organization:) }
+      let(:integration_customer) { create(:anrok_customer, integration:, customer:) }
+      let(:response) { instance_double(Net::HTTPOK) }
+      let(:lago_client) { instance_double(LagoHttpClient::Client) }
+      let(:endpoint) { 'https://api.nango.dev/v1/anrok/draft_invoices' }
+      let(:body) do
+        p = Rails.root.join('spec/fixtures/integration_aggregator/taxes/invoices/success_response.json')
+        File.read(p)
+      end
+      let(:integration_collection_mapping) do
+        create(
+          :netsuite_collection_mapping,
+          integration:,
+          mapping_type: :fallback_item,
+          settings: {external_id: '1', external_account_code: '11', external_name: ''}
+        )
+      end
+
+      before do
+        integration_collection_mapping
+        integration_customer
+
+        allow(LagoHttpClient::Client).to receive(:new).with(endpoint).and_return(lago_client)
+        allow(lago_client).to receive(:post_with_response).and_return(response)
+        allow(response).to receive(:body).and_return(body)
+        allow_any_instance_of(Fee).to receive(:id).and_return('lago_fee_id') # rubocop:disable RSpec/AnyInstance
+      end
+
+      it 'initializes an invoice' do
+        result = usage_service.call
+
+        aggregate_failures do
+          expect(result).to be_success
+          expect(result.invoice).to be_a(Invoice)
+
+          expect(result.usage).to have_attributes(
+            from_datetime: Time.current.beginning_of_month.iso8601,
+            to_datetime: Time.current.end_of_month.iso8601,
+            issuing_date: Time.zone.today.end_of_month.iso8601,
+            currency: 'EUR',
+            amount_cents: 2532, # 1266 * 2,
+            taxes_amount_cents: 253, # 2532 * 0.1
+            total_amount_cents: 2785
+          )
+          expect(result.usage.fees.size).to eq(1)
+          expect(result.usage.fees.first.charge.invoice_display_name).to eq(charge.invoice_display_name)
+        end
+      end
+
+      it 'uses the Rails cache' do
+        key = [
+          'provider-taxes',
+          subscription.id,
+          plan.updated_at.iso8601
+        ].join('/')
+
+        expect do
+          usage_service.call
+        end.to change { Rails.cache.exist?(key) }.from(false).to(true)
+      end
+
+      context 'when there is error received from the provider' do
+        let(:body) do
+          p = Rails.root.join('spec/fixtures/integration_aggregator/taxes/invoices/failure_response.json')
+          File.read(p)
+        end
+
+        it 'returns tax error' do
+          result = usage_service.call
+
+          aggregate_failures do
+            expect(result).not_to be_success
+            expect(result.error).to be_a(BaseService::ValidationFailure)
+            expect(result.error.messages[:tax_error]).to eq(['taxDateTooFarInFuture'])
+          end
+        end
       end
     end
 
@@ -125,7 +233,7 @@ RSpec.describe Invoices::CustomerUsageService, type: :service do
           customer:,
           subscription_at:,
           started_at:,
-          billing_time: :anniversary,
+          billing_time: :anniversary
         )
       end
 
@@ -142,7 +250,7 @@ RSpec.describe Invoices::CustomerUsageService, type: :service do
               currency: 'EUR',
               amount_cents: 2532, # 1266 * 2,
               taxes_amount_cents: 506, # 1266 * 2 * 0.2 = 506.4
-              total_amount_cents: 3038,
+              total_amount_cents: 3038
             )
 
             expect(result.usage.from_datetime.to_date.to_s).to eq('2022-06-07')

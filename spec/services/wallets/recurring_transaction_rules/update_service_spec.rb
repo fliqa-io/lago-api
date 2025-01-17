@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'rails_helper'
+require "rails_helper"
 
 RSpec.describe Wallets::RecurringTransactionRules::UpdateService do
   subject(:update_service) { described_class.new(wallet:, params:) }
@@ -11,68 +11,79 @@ RSpec.describe Wallets::RecurringTransactionRules::UpdateService do
     [
       {
         lago_id: recurring_transaction_rule.id,
-        rule_type: 'interval',
-        interval: 'weekly',
-        paid_credits: '105',
-        granted_credits: '105',
-      },
+        trigger: "interval",
+        interval: "weekly",
+        paid_credits: "105",
+        granted_credits: "105",
+        started_at: "2024-05-30T12:48:26Z"
+      }
     ]
   end
 
-  describe '#call' do
+  describe "#call" do
     before { recurring_transaction_rule }
 
-    it 'updates existing recurring transaction rule' do
+    it "updates existing recurring transaction rule" do
       result = update_service.call
 
       rule = result.wallet.reload.recurring_transaction_rules.first
 
       aggregate_failures do
         expect(result.wallet.reload.recurring_transaction_rules.count).to eq(1)
-        expect(rule.id).to eq(recurring_transaction_rule.id)
-        expect(rule.rule_type).to eq('interval')
-        expect(rule.interval).to eq('weekly')
-        expect(rule.threshold_credits).to eq(0.0)
-        expect(rule.paid_credits).to eq(105.0)
-        expect(rule.granted_credits).to eq(105.0)
+        expect(rule).to have_attributes(
+          granted_credits: 105.0,
+          id: recurring_transaction_rule.id,
+          interval: "weekly",
+          method: "fixed",
+          paid_credits: 105.0,
+          started_at: Time.parse("2024-05-30T12:48:26Z"),
+          threshold_credits: 0.0,
+          trigger: "interval"
+        )
       end
     end
 
-    context 'with added rule without id' do
+    context "with added rule without id" do
       let(:params) do
         [
           {
-            rule_type: 'interval',
-            interval: 'weekly',
-            paid_credits: '105',
-            granted_credits: '105',
-          },
+            granted_credits: "105",
+            interval: "weekly",
+            method: "target",
+            paid_credits: "105",
+            target_ongoing_balance: "300",
+            trigger: "interval"
+          }
         ]
       end
 
-      it 'creates new recurring transaction rule and removes existing' do
+      it "creates new recurring transaction rule and removes existing" do
         result = update_service.call
 
         rule = result.wallet.reload.recurring_transaction_rules.first
 
         aggregate_failures do
           expect(result.wallet.reload.recurring_transaction_rules.count).to eq(1)
+          expect(rule).to have_attributes(
+            granted_credits: 105.0,
+            interval: "weekly",
+            method: "target",
+            paid_credits: 105.0,
+            target_ongoing_balance: 300.0,
+            threshold_credits: 0.0,
+            trigger: "interval"
+          )
           expect(rule.id).not_to eq(recurring_transaction_rule.id)
-          expect(rule.rule_type).to eq('interval')
-          expect(rule.interval).to eq('weekly')
-          expect(rule.threshold_credits).to eq(0.0)
-          expect(rule.paid_credits).to eq(105.0)
-          expect(rule.granted_credits).to eq(105.0)
         end
       end
     end
 
-    context 'when empty array is sent as argument' do
+    context "when empty array is sent as argument" do
       let(:params) do
         []
       end
 
-      it 'sanitizes not needed rules' do
+      it "sanitizes not needed rules" do
         result = update_service.call
 
         expect(result.wallet.reload.recurring_transaction_rules.count).to eq(0)

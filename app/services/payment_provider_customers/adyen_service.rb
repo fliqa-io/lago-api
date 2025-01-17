@@ -20,6 +20,11 @@ module PaymentProviderCustomers
 
       result.checkout_url = checkout_url_result.checkout_url
       result
+    rescue Adyen::AuthenticationError
+      # NOTE: Authentication errors will be sent to the account owner with a webhook.
+      #       Since nothing can be done on Lago's side, we should not raise the error.
+      # TODO: Flag the error on the PaymentProvider instance.
+      result
     end
 
     def update
@@ -40,7 +45,7 @@ module PaymentProviderCustomers
         SendWebhookJob.perform_later(
           'customer.checkout_url_generated',
           customer,
-          checkout_url: result.checkout_url,
+          checkout_url: result.checkout_url
         )
       end
 
@@ -65,9 +70,7 @@ module PaymentProviderCustomers
       if event['success'] == 'true'
         adyen_customer.update!(payment_method_id:, provider_customer_id: shopper_reference)
 
-        if organization.webhook_endpoints.any?
-          SendWebhookJob.perform_later('customer.payment_provider_created', customer)
-        end
+        SendWebhookJob.perform_later('customer.payment_provider_created', customer)
       else
         deliver_error_webhook(Adyen::AdyenError.new(nil, nil, event['reason'], event['eventCode']))
       end
@@ -94,7 +97,7 @@ module PaymentProviderCustomers
       @client ||= Adyen::Client.new(
         api_key: adyen_payment_provider.api_key,
         env: adyen_payment_provider.environment,
-        live_url_prefix: adyen_payment_provider.live_prefix,
+        live_url_prefix: adyen_payment_provider.live_prefix
       )
     end
 
@@ -108,14 +111,14 @@ module PaymentProviderCustomers
         reference: "authorization customer #{customer.external_id}",
         amount: {
           value: 0, # pre-authorization
-          currency: customer.currency.presence || 'USD',
+          currency: customer.currency.presence || 'USD'
         },
         merchantAccount: adyen_payment_provider.merchant_account,
         returnUrl: success_redirect_url,
         shopperReference: customer.external_id,
         storePaymentMethodMode: 'enabled',
         recurringProcessingModel: 'UnscheduledCardOnFile',
-        expiresAt: Time.current + 69.days,
+        expiresAt: Time.current + 69.days
       }
       prms[:shopperEmail] = customer.email&.strip&.split(',')&.first if customer.email
       prms
@@ -126,15 +129,13 @@ module PaymentProviderCustomers
     end
 
     def deliver_error_webhook(adyen_error)
-      return unless organization.webhook_endpoints.any?
-
       SendWebhookJob.perform_later(
         'customer.payment_provider_error',
         customer,
         provider_error: {
           message: adyen_error.request&.dig('msg') || adyen_error.msg,
-          error_code: adyen_error.request&.dig('code') || adyen_error.code,
-        },
+          error_code: adyen_error.request&.dig('code') || adyen_error.code
+        }
       )
     end
 

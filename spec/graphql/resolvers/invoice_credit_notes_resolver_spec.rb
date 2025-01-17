@@ -39,8 +39,8 @@ RSpec.describe Resolvers::InvoiceCreditNotesResolver, type: :graphql do
       permissions: required_permission,
       query:,
       variables: {
-        invoiceId: invoice.id,
-      },
+        invoiceId: invoice.id
+      }
     )
 
     credit_notes_response = result['data']['invoiceCreditNotes']
@@ -62,8 +62,8 @@ RSpec.describe Resolvers::InvoiceCreditNotesResolver, type: :graphql do
         permissions: required_permission,
         query:,
         variables: {
-          invoiceId: '123456',
-        },
+          invoiceId: '123456'
+        }
       )
 
       expect_graphql_error(result:, message: 'Resource not found')

@@ -11,7 +11,7 @@ RSpec.describe Plans::OverrideService, type: :service do
   describe '#call' do
     let(:parent_plan) { create(:plan, organization:) }
     let(:billable_metric) { create(:billable_metric, organization:) }
-    let(:group) { create(:group, billable_metric:) }
+    let(:billable_metric_filter) { create(:billable_metric_filter, billable_metric:) }
     let(:tax) { create(:tax, organization:) }
 
     let(:charge) do
@@ -19,14 +19,26 @@ RSpec.describe Plans::OverrideService, type: :service do
         :standard_charge,
         plan: parent_plan,
         billable_metric:,
-        properties: {amount: '300'},
-        group_properties: [
-          build(
-            :group_property,
-            group:,
-            values: {amount: '10', amount_currency: 'EUR'},
-          ),
-        ],
+        properties: {amount: '300'}
+      )
+    end
+
+    let(:usage_threshold) { create(:usage_threshold, plan: parent_plan) }
+
+    let(:filter) do
+      create(
+        :charge_filter,
+        charge:,
+        properties: {amount: '10'}
+      )
+    end
+
+    let(:filter_value) do
+      create(
+        :charge_filter_value,
+        charge_filter: filter,
+        billable_metric_filter:,
+        values: [billable_metric_filter.values.first]
       )
     end
 
@@ -40,7 +52,8 @@ RSpec.describe Plans::OverrideService, type: :service do
         trial_period: 20,
         tax_codes: [tax.code],
         charges: charges_params,
-        minimum_commitment: minimum_commitment_params,
+        usage_thresholds: usage_thresholds_args,
+        minimum_commitment: minimum_commitment_params
       }
     end
 
@@ -48,7 +61,7 @@ RSpec.describe Plans::OverrideService, type: :service do
       {
         amount_cents: minimum_commitment_amount_cents,
         invoice_display_name: minimum_commitment_invoice_display_name,
-        tax_codes: [tax.code],
+        tax_codes: [tax.code]
       }
     end
 
@@ -59,16 +72,29 @@ RSpec.describe Plans::OverrideService, type: :service do
       [
         {
           id: charge.id,
-          min_amount_cents: 1000,
-        },
+          min_amount_cents: 1000
+        }
+      ]
+    end
+
+    let(:usage_thresholds_args) do
+      [
+        {
+          id: usage_threshold.id,
+          threshold_display_name: 'Threshold 1',
+          amount_cents: 1_000
+        }
       ]
     end
 
     around { |test| lago_premium!(&test) }
 
     before do
+      organization.update!(premium_integrations: ['progressive_billing'])
       charge
+      usage_threshold
       allow(SegmentTrackJob).to receive(:perform_later)
+      filter_value
     end
 
     it 'creates a plan based from the parent plan', :aggregate_failures do
@@ -89,7 +115,7 @@ RSpec.describe Plans::OverrideService, type: :service do
         description: 'overridden description',
         invoice_display_name: 'invoice display name',
         name: 'overridden name',
-        trial_period: 20,
+        trial_period: 20
       )
 
       expect(plan.taxes).to contain_exactly(tax)
@@ -97,7 +123,12 @@ RSpec.describe Plans::OverrideService, type: :service do
       expect(plan.minimum_commitment).to have_attributes(
         commitment_type: 'minimum_commitment',
         amount_cents: minimum_commitment_amount_cents,
-        invoice_display_name: minimum_commitment_invoice_display_name,
+        invoice_display_name: minimum_commitment_invoice_display_name
+      )
+
+      expect(plan.usage_thresholds.first).to have_attributes(
+        threshold_display_name: 'Threshold 1',
+        amount_cents: 1_000
       )
 
       expect(plan.minimum_commitment.taxes.first).to eq(tax)
@@ -124,8 +155,8 @@ RSpec.describe Plans::OverrideService, type: :service do
           nb_graduated_charges: 0,
           nb_package_charges: 0,
           organization_id: plan.organization_id,
-          parent_id: plan.parent.id,
-        },
+          parent_id: plan.parent.id
+        }
       )
     end
 
@@ -140,10 +171,10 @@ RSpec.describe Plans::OverrideService, type: :service do
               from_value: 0,
               to_value: nil,
               per_unit_amount: '0.01',
-              flat_amount: '0.01',
-            },
-          ],
-        },
+              flat_amount: '0.01'
+            }
+          ]
+        }
       )
 
       expect { override_service.call }.to change(Plan, :count).by(1)
@@ -155,7 +186,7 @@ RSpec.describe Plans::OverrideService, type: :service do
       expect(graduated).to have_attributes(
         plan_id: plan.id,
         min_amount_cents: charge2.min_amount_cents,
-        properties: charge2.properties,
+        properties: charge2.properties
       )
 
       standard = plan.charges.standard.first
@@ -169,7 +200,7 @@ RSpec.describe Plans::OverrideService, type: :service do
         properties: charge.properties,
         # Overriden attributes
         plan_id: plan.id,
-        min_amount_cents: 1000,
+        min_amount_cents: 1000
       )
     end
 

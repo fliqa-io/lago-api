@@ -78,10 +78,10 @@ RSpec.describe Integrations::NetsuiteIntegration, type: :model do
     end
   end
 
-  describe '#sync_sales_orders' do
+  describe '#legacy_script' do
     it 'assigns and retrieve a setting' do
-      netsuite_integration.sync_sales_orders = true
-      expect(netsuite_integration.sync_sales_orders).to eq(true)
+      netsuite_integration.legacy_script = true
+      expect(netsuite_integration.legacy_script).to eq(true)
     end
   end
 end

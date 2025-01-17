@@ -4,7 +4,7 @@ module BillableMetrics
   module Aggregations
     class SumService < BillableMetrics::Aggregations::BaseService
       def initialize(...)
-        super(...)
+        super
 
         event_store.numeric_property = true
         event_store.aggregation_property = billable_metric.field_name
@@ -12,6 +12,8 @@ module BillableMetrics
       end
 
       def compute_aggregation(options: {})
+        return empty_result if should_bypass_aggregation?
+
         aggregation = event_store.sum
 
         if options[:is_pay_in_advance] && options[:is_current_usage]
@@ -25,7 +27,7 @@ module BillableMetrics
         result.options = {running_total: running_total(options)}
         result
       rescue ActiveRecord::StatementInvalid => e
-        result.service_failure!(code: 'aggregation_failure', message: e.message)
+        result.service_failure!(code: "aggregation_failure", message: e.message)
       end
 
       # NOTE: Apply the grouped_by filter to the aggregation
@@ -37,6 +39,8 @@ module BillableMetrics
       #       as pay in advance aggregation will be computed on a single group
       #       with the grouped_by_values filter
       def compute_grouped_by_aggregation(options: {})
+        return empty_results if should_bypass_aggregation?
+
         aggregations = event_store.grouped_sum
         return empty_results if aggregations.blank?
 
@@ -58,10 +62,25 @@ module BillableMetrics
           group_result.count = count[:value] || 0
           group_result
         end
-
-        result
       rescue ActiveRecord::StatementInvalid => e
-        result.service_failure!(code: 'aggregation_failure', message: e.message)
+        result.service_failure!(code: "aggregation_failure", message: e.message)
+      end
+
+      def compute_precise_total_amount_cents(options: {})
+        result.precise_total_amount_cents = event_store.sum_precise_total_amount_cents
+        result.pay_in_advance_precise_total_amount_cents = event&.precise_total_amount_cents || 0
+      end
+
+      def compute_grouped_by_precise_total_amount_cents(options: {})
+        aggregations = event_store.grouped_sum_precise_total_amount_cents
+        return result if aggregations.blank?
+
+        aggregations.each do |aggregation|
+          group_result = result.aggregations.find { |group_result| group_result.grouped_by == aggregation[:groups] }
+          next unless group_result
+
+          group_result.precise_total_amount_cents = aggregation[:value]
+        end
       end
 
       # NOTE: Return cumulative sum of field_name based on the number of free units
@@ -91,19 +110,19 @@ module BillableMetrics
       end
 
       def compute_pay_in_advance_aggregation
-        return BigDecimal(0) unless event
-        return BigDecimal(0) if event.properties.blank?
+        return BigDecimal("0") unless event
+        return BigDecimal("0") if event.properties.blank?
 
         value = event.properties.fetch(billable_metric.field_name, 0).to_s
 
         cached_aggregation = find_cached_aggregation(
           with_from_datetime: from_datetime,
           with_to_datetime: to_datetime,
-          grouped_by: grouped_by_values,
+          grouped_by: grouped_by_values
         )
 
         unless cached_aggregation
-          return_value = BigDecimal(value).negative? ? '0' : value
+          return_value = BigDecimal(value).negative? ? "0" : value
           handle_event_metadata(current_aggregation: value, max_aggregation: value, units_applied: value)
 
           return BigDecimal(return_value)
@@ -127,8 +146,8 @@ module BillableMetrics
         BigDecimal(result)
       end
 
-      def compute_per_event_aggregation
-        event_store.events_values(force_from: true)
+      def compute_per_event_aggregation(exclude_event:)
+        event_store.events_values(force_from: true, exclude_event:)
       end
 
       def handle_event_metadata(current_aggregation: nil, max_aggregation: nil, units_applied: nil)

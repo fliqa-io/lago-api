@@ -32,8 +32,8 @@ RSpec.describe Organizations::UpdateService do
       billing_configuration: {
         invoice_footer: 'invoice footer',
         document_locale: 'fr',
-        invoice_grace_period:,
-      },
+        invoice_grace_period:
+      }
     }
   end
 
@@ -72,6 +72,18 @@ RSpec.describe Organizations::UpdateService do
       end
     end
 
+    context 'when finalize_zero_amount_invoice is sent' do
+      before { params[:finalize_zero_amount_invoice] = 'false' }
+
+      it 'converts document_number_prefix to upcase version' do
+        result = update_service.call
+
+        aggregate_failures do
+          expect(result.organization.finalize_zero_amount_invoice).to eq(false)
+        end
+      end
+    end
+
     context 'when document_number_prefix is invalid' do
       before { params[:document_number_prefix] = 'aaaaaaaaaaaaaaa' }
 
@@ -102,11 +114,11 @@ RSpec.describe Organizations::UpdateService do
         let(:customer) { create(:customer, organization:) }
 
         let(:invoice_to_be_finalized) do
-          create(:invoice, status: :draft, customer:, created_at: DateTime.parse('19 Jun 2022'), organization:)
+          create(:invoice, status: :draft, customer:, issuing_date: DateTime.parse('19 Jun 2022').to_date, organization:)
         end
 
         let(:invoice_to_not_be_finalized) do
-          create(:invoice, status: :draft, customer:, created_at: DateTime.parse('21 Jun 2022'), organization:)
+          create(:invoice, status: :draft, customer:, issuing_date: DateTime.parse('21 Jun 2022').to_date, organization:)
         end
 
         let(:invoice_grace_period) { 2 }
@@ -114,7 +126,7 @@ RSpec.describe Organizations::UpdateService do
         before do
           invoice_to_be_finalized
           invoice_to_not_be_finalized
-          allow(Invoices::FinalizeService).to receive(:call)
+          allow(Invoices::FinalizeJob).to receive(:perform_later)
         end
 
         it 'finalizes corresponding draft invoices' do
@@ -125,8 +137,41 @@ RSpec.describe Organizations::UpdateService do
 
             aggregate_failures do
               expect(result.organization.invoice_grace_period).to eq(2)
-              expect(Invoices::FinalizeService).not_to have_received(:call).with(invoice: invoice_to_not_be_finalized)
-              expect(Invoices::FinalizeService).to have_received(:call).with(invoice: invoice_to_be_finalized)
+              expect(Invoices::FinalizeJob).not_to have_received(:perform_later).with(invoice_to_not_be_finalized)
+              expect(Invoices::FinalizeJob).to have_received(:perform_later).with(invoice_to_be_finalized)
+            end
+          end
+        end
+      end
+
+      context 'when updating net_payment_term' do
+        let(:customer) { create(:customer, organization:) }
+
+        let(:draft_invoice) do
+          create(:invoice, status: :draft, customer:, created_at: DateTime.parse('19 Jun 2022'), organization:)
+        end
+
+        let(:params) do
+          {
+            net_payment_term: 2
+          }
+        end
+
+        before do
+          draft_invoice
+          allow(Organizations::UpdateInvoicePaymentDueDateService).to receive(:call).and_call_original
+        end
+
+        it 'updates the corresponding draft invoices' do
+          current_date = DateTime.parse('22 Jun 2022')
+
+          travel_to(current_date) do
+            result = update_service.call
+            expect(result).to be_success
+
+            aggregate_failures do
+              expect(result.organization.net_payment_term).to eq(2)
+              expect(Organizations::UpdateInvoicePaymentDueDateService).to have_received(:call).with(organization:, net_payment_term: 2)
             end
           end
         end
@@ -157,96 +202,6 @@ RSpec.describe Organizations::UpdateService do
           expect(result).not_to be_success
           expect(result.error).to be_a(BaseService::ValidationFailure)
           expect(result.error.messages[:country]).to eq(['not_a_valid_country_code'])
-        end
-      end
-    end
-
-    context 'with legacy vat_rate' do
-      let(:vat_rate) { 12.5 }
-      let(:params) do
-        {
-          webhook_url: 'http://foo.bar',
-          legal_name: 'Foobar',
-          legal_number: '1234',
-          email: 'foo@bar.com',
-          address_line1: 'Line 1',
-          address_line2: 'Line 2',
-          state: 'Foobar',
-          zipcode: 'FOO1234',
-          city: 'Foobar',
-          country:,
-          timezone:,
-          logo:,
-          email_settings:,
-          billing_configuration: {
-            vat_rate:,
-            invoice_footer: 'invoice footer',
-            document_locale: 'fr',
-            invoice_grace_period:,
-          },
-        }
-      end
-
-      it 'assigns the vat_rate and creates a tax_rate' do
-        result = update_service.call
-
-        aggregate_failures do
-          expect(result.organization.vat_rate).to eq(12.5)
-
-          expect(result.organization.taxes.count).to eq(1)
-
-          tax_rate = result.organization.taxes.first
-          expect(tax_rate.rate).to eq(12.5)
-        end
-      end
-
-      context 'when organization already have a tax rate' do
-        before { create(:tax, organization:, rate: 14) }
-
-        it 'create a new tax_rate' do
-          result = update_service.call
-
-          aggregate_failures do
-            expect(result.organization.vat_rate).to eq(12.5)
-
-            expect(result.organization.taxes.count).to eq(2)
-            expect(result.organization.taxes.applied_to_organization.count).to eq(1)
-
-            tax_rate = result.organization.taxes.applied_to_organization.first
-            expect(tax_rate.rate).to eq(12.5)
-          end
-        end
-
-        context 'with vat_rate equals to 0' do
-          let(:vat_rate) { 0 }
-
-          it 'toggle the applied_to_organization flag' do
-            result = update_service.call
-
-            aggregate_failures do
-              expect(result.organization.vat_rate).to eq(0)
-
-              expect(result.organization.taxes.count).to eq(1)
-              expect(result.organization.taxes.applied_to_organization.count).to eq(0)
-            end
-          end
-        end
-      end
-
-      context 'when organization have multiple tax rates' do
-        before do
-          create(:tax, organization:, rate: 14)
-          create(:tax, organization:, rate: 15)
-        end
-
-        it 'raises a validation error' do
-          result = update_service.call
-
-          aggregate_failures do
-            expect(result).not_to be_success
-            expect(result.error).to be_a(BaseService::ValidationFailure)
-            expect(result.error.messages[:vat_rate]).to eq(['multiple_taxes'])
-          end
         end
       end
     end

@@ -23,8 +23,8 @@ RSpec.describe ::V1::Customers::ChargeUsageSerializer do
         name: billable_metric.name,
         code: billable_metric.code,
         aggregation_type: billable_metric.aggregation_type,
-        grouped_by: {'card_type' => 'visa'},
-      ),
+        grouped_by: {'card_type' => 'visa'}
+      )
     ]
   end
 
@@ -40,86 +40,25 @@ RSpec.describe ::V1::Customers::ChargeUsageSerializer do
         'charge' => {
           'lago_id' => charge.id,
           'charge_model' => charge.charge_model,
-          'invoice_display_name' => charge.invoice_display_name,
+          'invoice_display_name' => charge.invoice_display_name
         },
         'billable_metric' => {
           'lago_id' => billable_metric.id,
           'name' => billable_metric.name,
           'code' => billable_metric.code,
-          'aggregation_type' => billable_metric.aggregation_type,
+          'aggregation_type' => billable_metric.aggregation_type
         },
         'filters' => [],
-        'groups' => [],
         'grouped_usage' => [
           {
             'amount_cents' => 100,
             'events_count' => 12,
             'units' => '10.0',
             'grouped_by' => {'card_type' => 'visa'},
-            'filters' => [],
-            'groups' => [],
-          },
-        ],
+            'filters' => []
+          }
+        ]
       )
-    end
-  end
-
-  describe '#groups' do
-    subject(:serializer_groups) { serializer.__send__(:groups, fees) }
-
-    let(:fees) { [fee1, fee2] }
-    let(:charge_filter) { create(:charge_filter) }
-
-    context 'when all fees have groups' do
-      let(:fee1) { create(:fee, charge_filter:) }
-      let(:fee2) { create(:fee, charge_filter:) }
-
-      let(:groups) do
-        [
-          {
-            lago_id: "charge-filter-#{fee2.charge_filter_id}",
-            key: fee2.charge_filter.to_h.keys.join(', '),
-            value: fee2.charge_filter.to_h.values.flatten.join(', '),
-            units: fee2.units,
-            amount_cents: fee2.amount_cents,
-            events_count: fee2.events_count,
-          },
-          {
-            lago_id: "charge-filter-#{fee1.charge_filter_id}",
-            key: fee1.charge_filter.to_h.keys.join(', '),
-            value: fee1.charge_filter.to_h.values.flatten.join(', '),
-            units: fee1.units,
-            amount_cents: fee1.amount_cents,
-            events_count: fee1.events_count,
-          },
-        ]
-      end
-
-      it 'returns groups array' do
-        expect(serializer_groups).to eq(groups)
-      end
-    end
-
-    context 'when one fee does not have a filter' do
-      let(:fee1) { create(:fee) }
-      let(:fee2) { create(:fee, charge_filter:) }
-
-      let(:groups) do
-        [
-          {
-            lago_id: "charge-filter-#{fee2.charge_filter_id}",
-            key: fee2.charge_filter.to_h.keys.join(', '),
-            value: fee2.charge_filter.to_h.values.flatten.join(', '),
-            units: fee2.units,
-            amount_cents: fee2.amount_cents,
-            events_count: fee2.events_count,
-          },
-        ]
-      end
-
-      it 'returns groups array' do
-        expect(serializer_groups).to eq(groups)
-      end
     end
   end
 
@@ -143,8 +82,8 @@ RSpec.describe ::V1::Customers::ChargeUsageSerializer do
           code: billable_metric.code,
           aggregation_type: billable_metric.aggregation_type,
           grouped_by: {'card_type' => 'visa'},
-          charge_filter:,
-        ),
+          charge_filter:
+        )
       ]
     end
 
@@ -154,7 +93,7 @@ RSpec.describe ::V1::Customers::ChargeUsageSerializer do
         'amount_cents' => 100,
         'events_count' => 12,
         'invoice_display_name' => charge_filter.invoice_display_name,
-        'values' => {},
+        'values' => {}
       )
 
       expect(result['charges'].first['grouped_usage'].first['filters'].first).to include(
@@ -162,7 +101,7 @@ RSpec.describe ::V1::Customers::ChargeUsageSerializer do
         'amount_cents' => 100,
         'events_count' => 12,
         'invoice_display_name' => charge_filter.invoice_display_name,
-        'values' => {},
+        'values' => {}
       )
     end
   end

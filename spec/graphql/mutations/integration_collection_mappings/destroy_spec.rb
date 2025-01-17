@@ -31,8 +31,8 @@ RSpec.describe Mutations::IntegrationCollectionMappings::Destroy, type: :graphql
         permissions: required_permission,
         query: mutation,
         variables: {
-          input: {id: integration_collection_mapping.id},
-        },
+          input: {id: integration_collection_mapping.id}
+        }
       )
     end.to change(::IntegrationCollectionMappings::BaseCollectionMapping, :count).by(-1)
   end
@@ -45,8 +45,8 @@ RSpec.describe Mutations::IntegrationCollectionMappings::Destroy, type: :graphql
         permissions: required_permission,
         query: mutation,
         variables: {
-          input: {id: '123456'},
-        },
+          input: {id: '123456'}
+        }
       )
 
       expect_not_found(result)

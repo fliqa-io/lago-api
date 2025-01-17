@@ -23,12 +23,12 @@ module Auth
           response_mode: 'query',
           scope: 'openid profile email',
           redirect_uri: "#{ENV["LAGO_FRONT_URL"]}/auth/okta/callback",
-          state:,
+          state:
         }
         result.url = URI::HTTPS.build(
           host: "#{result.okta_integration.organization_name.downcase}.okta.com",
-          path: '/oauth2/default/v1/authorize',
-          query: params.to_query,
+          path: '/oauth2/v1/authorize',
+          query: params.to_query
         ).to_s
 
         result

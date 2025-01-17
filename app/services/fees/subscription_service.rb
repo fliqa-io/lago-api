@@ -13,9 +13,9 @@ module Fees
     def create
       return result if already_billed?
 
-      new_amount_cents = compute_amount.round
-      new_fee = initialize_fee(new_amount_cents)
-      new_fee.precise_unit_amount = new_fee.unit_amount.to_f
+      new_precise_amount_cents = compute_amount
+      new_amount_cents = new_precise_amount_cents.round
+      new_fee = initialize_fee(new_amount_cents, new_precise_amount_cents)
 
       ActiveRecord::Base.transaction do
         new_fee.save!
@@ -32,14 +32,16 @@ module Fees
 
     attr_reader :invoice, :subscription, :boundaries
 
-    delegate :customer, to: :invoice
+    delegate :customer, :organization, to: :invoice
     delegate :previous_subscription, :plan, to: :subscription
 
-    def initialize_fee(new_amount_cents)
+    def initialize_fee(new_amount_cents, new_precise_amount_cents)
       base_fee = Fee.new(
         invoice:,
+        organization:,
         subscription:,
         amount_cents: new_amount_cents,
+        precise_amount_cents: new_precise_amount_cents.to_d,
         amount_currency: plan.amount_currency,
         fee_type: :subscription,
         invoiceable_type: 'Subscription',
@@ -49,8 +51,9 @@ module Fees
         payment_status: :pending,
         taxes_amount_cents: 0,
         unit_amount_cents: new_amount_cents,
-        amount_details: {plan_amount_cents: plan.amount_cents},
+        amount_details: {plan_amount_cents: plan.amount_cents}
       )
+      base_fee.precise_unit_amount = base_fee.unit_amount.to_f
 
       return base_fee if !invoice.draft? || !adjusted_fee
 
@@ -61,12 +64,21 @@ module Fees
       end
 
       units = adjusted_fee.units
-      unit_amount_cents = adjusted_fee.unit_amount_cents.round
-      amount_cents = adjusted_fee.adjusted_units? ? (units * new_amount_cents) : (units * unit_amount_cents)
+      unit_precise_amount_cents = adjusted_fee.unit_precise_amount_cents
+      amount_cents = adjusted_fee.adjusted_units? ? (units * new_amount_cents) : (units * unit_precise_amount_cents).round
+
+      precise_amount_cents = if adjusted_fee.adjusted_units?
+        (units * new_precise_amount_cents)
+      else
+        (units * unit_precise_amount_cents)
+      end
 
       base_fee.amount_cents = amount_cents.round
+      base_fee.precise_amount_cents = precise_amount_cents
       base_fee.units = units
-      base_fee.unit_amount_cents = adjusted_fee.adjusted_units? ? new_amount_cents : unit_amount_cents
+      precise_unit_amount_cents = adjusted_fee.adjusted_units? ? new_amount_cents : unit_precise_amount_cents
+      base_fee.unit_amount_cents = precise_unit_amount_cents.round
+      base_fee.precise_unit_amount = precise_unit_amount_cents / invoice.total_amount.currency.subunit_to_unit
       base_fee.invoice_display_name = adjusted_fee.invoice_display_name
 
       base_fee
@@ -83,7 +95,7 @@ module Fees
     end
 
     def already_billed?
-      existing_fee = invoice.fees.subscription_kind.find_by(subscription_id: subscription.id)
+      existing_fee = invoice.fees.subscription.find_by(subscription_id: subscription.id)
       return false unless existing_fee
 
       result.fee = existing_fee
@@ -126,7 +138,7 @@ module Fees
       # However, we should not bill full amount if subscription is downgraded since in that case, first invoice
       # should be prorated (this part is covered with first_subscription_amount method).
       return true if plan.pay_in_advance? && subscription.anniversary? && !subscription.previous_subscription_id
-      return true if subscription.fees.subscription_kind.where('created_at < ?', invoice.created_at).exists?
+      return true if subscription.fees.subscription.where('created_at < ?', invoice.created_at).exists?
       return true if subscription.started_in_past? && plan.pay_in_advance?
 
       if subscription.started_in_past? &&
@@ -155,7 +167,7 @@ module Fees
       days_to_bill = Utils::Datetime.date_diff_with_timezone(
         from_datetime,
         to_datetime,
-        customer.applicable_timezone,
+        customer.applicable_timezone
       )
       days_to_bill * single_day_price(subscription)
     end
@@ -191,7 +203,7 @@ module Fees
       number_of_day_to_bill *
         single_day_price(
           subscription,
-          optional_from_date: from_datetime.in_time_zone(customer.applicable_timezone).to_date,
+          optional_from_date: from_datetime.in_time_zone(customer.applicable_timezone).to_date
         )
     end
 
@@ -212,7 +224,7 @@ module Fees
       number_of_day_to_bill = Utils::Datetime.date_diff_with_timezone(
         from_datetime,
         to_datetime,
-        customer.applicable_timezone,
+        customer.applicable_timezone
       )
 
       # NOTE: Subscription is upgraded from another plan
@@ -241,12 +253,12 @@ module Fees
           number_of_day_to_bill = Utils::Datetime.date_diff_with_timezone(
             subscription.trial_end_datetime,
             to_datetime,
-            customer.applicable_timezone,
+            customer.applicable_timezone
           )
 
           return number_of_day_to_bill * single_day_price(
             subscription,
-            optional_from_date: from_datetime.in_time_zone(customer.applicable_timezone).to_date,
+            optional_from_date: from_datetime.in_time_zone(customer.applicable_timezone).to_date
           )
         end
       end
@@ -261,7 +273,7 @@ module Fees
     # NOTE: cost of a single day in a period
     def single_day_price(target_subscription, optional_from_date: nil)
       date_service(target_subscription).single_day_price(
-        optional_from_date:,
+        optional_from_date:
       )
     end
   end

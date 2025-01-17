@@ -8,9 +8,15 @@ FactoryBot.define do
     fee_type { 'subscription' }
     subscription
 
+    after(:create) do |fee, context|
+      fee.organization = fee.invoice&.organization || fee.subscription&.organization
+    end
+
     amount_cents { 200 }
+    precise_amount_cents { 200.0000000001 }
     amount_currency { 'EUR' }
     taxes_amount_cents { 2 }
+    taxes_precise_amount_cents { 2.0000000001 }
 
     invoiceable_type { 'Subscription' }
     invoiceable_id { subscription.id }
@@ -43,10 +49,11 @@ FactoryBot.define do
 
     properties do
       {
+        'timestamp' => Date.parse('2022-08-01 00:03:24'),
         'from_datetime' => Date.parse('2022-08-01 00:00:00'),
         'to_datetime' => Date.parse('2022-08-31 23:59:59'),
         'charges_from_datetime' => Date.parse('2022-08-01 00:00:00'),
-        'charges_to_datetime' => Date.parse('2022-08-31 23:59:59'),
+        'charges_to_datetime' => Date.parse('2022-08-31 23:59:59')
       }
     end
 

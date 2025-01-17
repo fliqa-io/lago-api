@@ -3,6 +3,7 @@ de:
   invoice:
     all_subscriptions: Alle Abonnements
     all_usage_based_fees: Alle nutzungsabhängigen Gebühren
+    already_paid: Bereits bezahlt
     amount: Betrag
     amount_with_tax: Betrag (inkl. Steuern)
     amount_without_tax: Betrag (ohne Steuern)
@@ -17,6 +18,7 @@ de:
     date_to: Bis
     details: "%{resource} Details"
     document_name: Rechnung
+    document_tax_name: Steuerrechnung
     due_date: Fälligkeit %{date}
     fee_prorated: Die Gebühr wird anteilig nach Nutzungstagen berechnet, der angezeigte Stückpreis ist ein Durchschnitt
     fees_from_to_date: Gebühren vom %{from_date} bis %{to_date}
@@ -39,6 +41,8 @@ de:
       fee_per_package: Gebühr pro Paket
       fee_per_package_unit_price: "%{amount} pro %{package_size}"
       free_units_for_the_first: Gebühr pro Einheit für die ersten %{count}
+    paid_invoice: Bezahlte Rechnung
+    paid_tax_invoice: Bezahlte Steuerrechnung
     payment_term: Zahlungsfrist
     payment_term_days: "%{net_payment_term} Tage"
     percentage:
@@ -52,8 +56,10 @@ de:
     prepaid_credit_invoice: Anzahlungsrechnung
     prepaid_credits: Prepaid-Guthaben
     prepaid_credits_with_value: Prepaid-Guthaben - %{wallet_name}
+    progressive_billing_credit: Nutzung bereits abgerechnet
     quarter: quartal
     quarterly: Vierteljährlich
+    reached_usage_threshold: Diese progressive Rechnung wird erstellt, da Ihre kumulierte Nutzung %{usage_amount} erreicht hat und den Schwellenwert von %{threshold_amount} überschritten hat.
     see_breakdown: Siehe Aufschlüsselung für Gesamtübersicht
     sub_total: Zwischensumme
     sub_total_with_tax: Zwischensumme (inkl. Steuern)
@@ -63,6 +69,14 @@ de:
     tax: Steuern
     tax_identification_number: 'Steuer ID: %{tax_identification_number}'
     tax_name: "%{name} (%{rate}% on %{amount})"
+    tax_name_only:
+      customer_exempt: Der Kunde ist von der Umsatzsteuer befreit
+      juris_has_no_tax: Keine Steuer
+      juris_not_taxed: Keine Steuer
+      not_collecting: Keine Steuer
+      reverse_charge: Reverse-Charge-Verfahren - Steuerschuldnerschaft auf den Kunden übertragen
+      transaction_exempt: Der Kunde ist von der Umsatzsteuer befreit
+      unknown_taxation: Unbekannt
     tax_name_with_details: "%{name} (%{rate}%)"
     tax_rate: Steuersatz
     taxes:

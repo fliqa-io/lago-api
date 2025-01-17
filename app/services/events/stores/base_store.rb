@@ -3,12 +3,13 @@
 module Events
   module Stores
     class BaseStore
-      def initialize(code:, subscription:, boundaries:, filters: {})
+      def initialize(subscription:, boundaries:, code: nil, filters: {})
         @code = code
         @subscription = subscription
         @boundaries = boundaries
 
-        @group = filters[:group]
+        @filters = filters
+
         @grouped_by = filters[:grouped_by]
         @grouped_by_values = filters[:grouped_by_values]
 
@@ -70,6 +71,14 @@ module Events
         raise NotImplementedError
       end
 
+      def sum_precise_total_amount_cents
+        raise NotImplementedError
+      end
+
+      def grouped_sum_precise_total_amount_cents
+        raise NotImplementedError
+      end
+
       def prorated_sum(period_duration:, persisted_duration: nil)
         raise NotImplementedError
       end
@@ -105,11 +114,16 @@ module Events
         boundaries[:charges_duration]
       end
 
+      def sanitize_colon(query)
+        # NOTE: escape ':' to avoid ActiveRecord::PreparedStatementInvalid,
+        query.gsub("'#{code}'", "'#{code.gsub(":", "\\:")}'")
+      end
+
       attr_accessor :numeric_property, :aggregation_property, :use_from_boundary, :grouped_by
 
       protected
 
-      attr_accessor :code, :subscription, :group, :boundaries, :grouped_by_values, :matching_filters, :ignored_filters
+      attr_accessor :code, :subscription, :boundaries, :grouped_by_values, :filters, :matching_filters, :ignored_filters
 
       delegate :customer, to: :subscription
 
@@ -117,7 +131,7 @@ module Events
         @period_duration ||= Subscriptions::DatesService.new_instance(
           subscription,
           to_datetime + 1.day,
-          current_usage: subscription.terminated? && subscription.upgraded?,
+          current_usage: subscription.terminated? && subscription.upgraded?
         ).charges_duration_in_days
       end
     end

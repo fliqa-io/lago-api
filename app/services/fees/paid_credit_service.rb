@@ -15,14 +15,17 @@ module Fees
       currency = invoice.total_amount.currency
       rounded_amount = wallet_transaction.amount.round(currency.exponent)
       amount_cents = rounded_amount * currency.subunit_to_unit
+      precise_amount_cents = wallet_transaction.amount * currency.subunit_to_unit.to_d
       unit_amount_cents = wallet_transaction.wallet.rate_amount * currency.subunit_to_unit
 
       new_fee = Fee.new(
         invoice:,
+        organization:,
         fee_type: :credit,
         invoiceable_type: 'WalletTransaction',
         invoiceable: wallet_transaction,
         amount_cents:,
+        precise_amount_cents:,
         amount_currency: wallet_transaction.wallet.currency,
         unit_amount_cents:,
         units: wallet_transaction.credit_amount,
@@ -31,6 +34,7 @@ module Fees
         # NOTE: No taxes should be applied on as it can be considered as an advance
         taxes_rate: 0,
         taxes_amount_cents: 0,
+        taxes_precise_amount_cents: 0.to_d
       )
       new_fee.precise_unit_amount = new_fee.unit_amount.to_f
       new_fee.save!
@@ -44,6 +48,7 @@ module Fees
     private
 
     attr_reader :invoice, :wallet_transaction, :customer
+    delegate :organization, to: :customer
 
     def already_billed?
       existing_fee = invoice.fees.find_by(invoiceable_id: wallet_transaction.id, invoiceable_type: 'WalletTransaction')

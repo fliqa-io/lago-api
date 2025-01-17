@@ -10,10 +10,6 @@ module IntegrationCustomers
     end
 
     def call
-      if !License.premium? || (customer.organization.premium_integrations & Organization::INTEGRATIONS).blank?
-        return result.not_allowed_failure!(code: 'premium_integration_missing')
-      end
-
       result.not_found_failure!(resource: 'integration') unless integration
       result
     end
@@ -27,11 +23,15 @@ module IntegrationCustomers
     end
 
     def customer_type
-      @customer_type ||= IntegrationCustomers::BaseCustomer.customer_type(params[:integration])
+      @customer_type ||= IntegrationCustomers::BaseCustomer.customer_type(params[:integration_type])
     end
 
     def subsidiary_id
       @subsidiary_id ||= params[:subsidiary_id]
+    end
+
+    def targeted_object
+      @targeted_object ||= params[:targeted_object]
     end
 
     def external_customer_id

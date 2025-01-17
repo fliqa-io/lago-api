@@ -48,6 +48,12 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
               values
               properties { amount }
             }
+          },
+          usageThresholds {
+            id,
+            amountCents,
+            thresholdDisplayName,
+            recurring
           }
         }
       }
@@ -63,7 +69,7 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
       :billable_metric_filter,
       billable_metric: billable_metrics[0],
       key: 'payment_method',
-      values: %w[card sepa],
+      values: %w[card sepa]
     )
   end
 
@@ -87,7 +93,7 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
           minimumCommitment: {
             amountCents: minimum_commitment_amount_cents,
             invoiceDisplayName: minimum_commitment_invoice_display_name,
-            taxCodes: [commitment_tax.code],
+            taxCodes: [commitment_tax.code]
           },
           charges: [
             {
@@ -98,9 +104,9 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
                 {
                   invoiceDisplayName: 'Payment method',
                   properties: {amount: '10.00'},
-                  values: {billable_metric_filter.key => %w[card]},
-                },
-              ],
+                  values: {billable_metric_filter.key => %w[card]}
+                }
+              ]
             },
             {
               billableMetricId: billable_metrics[1].id,
@@ -108,8 +114,8 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
               properties: {
                 amount: '300.00',
                 freeUnits: 10,
-                packageSize: 10,
-              },
+                packageSize: 10
+              }
             },
             {
               billableMetricId: billable_metrics[2].id,
@@ -118,8 +124,8 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
                 rate: '0.25',
                 fixedAmount: '2',
                 freeUnitsPerEvents: 5,
-                freeUnitsPerTotalAggregation: '50',
-              },
+                freeUnitsPerTotalAggregation: '50'
+              }
             },
             {
               billableMetricId: billable_metrics[3].id,
@@ -130,16 +136,16 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
                     fromValue: 0,
                     toValue: 10,
                     perUnitAmount: '2.00',
-                    flatAmount: '0',
+                    flatAmount: '0'
                   },
                   {
                     fromValue: 11,
                     toValue: nil,
                     perUnitAmount: '3.00',
-                    flatAmount: '3.00',
-                  },
-                ],
-              },
+                    flatAmount: '3.00'
+                  }
+                ]
+              }
             },
             {
               billableMetricId: billable_metrics[4].id,
@@ -150,20 +156,35 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
                     fromValue: 0,
                     toValue: 10,
                     perUnitAmount: '2.00',
-                    flatAmount: '0',
+                    flatAmount: '0'
                   },
                   {
                     fromValue: 11,
                     toValue: nil,
                     perUnitAmount: '3.00',
-                    flatAmount: '3.00',
-                  },
-                ],
-              },
-            },
+                    flatAmount: '3.00'
+                  }
+                ]
+              }
+            }
           ],
-        },
-      },
+          usageThresholds: [
+            {
+              amountCents: 100,
+              thresholdDisplayName: 'Threshold 1'
+            },
+            {
+              amountCents: 200,
+              thresholdDisplayName: 'Threshold 2'
+            },
+            {
+              amountCents: 1,
+              thresholdDisplayName: 'Threshold 3 Recurring',
+              recurring: true
+            }
+          ]
+        }
+      }
     }
   end
 
@@ -174,6 +195,8 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
 
   context 'with premium license' do
     around { |test| lago_premium!(&test) }
+
+    before { organization.update!(premium_integrations: ['progressive_billing']) }
 
     it 'updates a plan' do
       result = execute_graphql(**graphql)
@@ -190,6 +213,7 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
         expect(result_data['amountCents']).to eq('200')
         expect(result_data['amountCurrency']).to eq('EUR')
         expect(result_data['charges'].count).to eq(5)
+        expect(result_data['usageThresholds'].count).to eq(3)
 
         standard_charge = result_data['charges'][0]
         expect(standard_charge['properties']['amount']).to eq('100.00')
@@ -225,9 +249,26 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
 
         expect(result_data['minimumCommitment']).to include(
           'invoiceDisplayName' => minimum_commitment_invoice_display_name,
-          'amountCents' => minimum_commitment_amount_cents.to_s,
+          'amountCents' => minimum_commitment_amount_cents.to_s
         )
         expect(result_data['minimumCommitment']['taxes'].count).to eq(1)
+
+        thresholds = result_data['usageThresholds'].sort_by { |threshold| threshold['thresholdDisplayName'] }
+        expect(thresholds).to include hash_including(
+          'thresholdDisplayName' => 'Threshold 1',
+          'amountCents' => '100',
+          'recurring' => false
+        )
+        expect(thresholds).to include hash_including(
+          'thresholdDisplayName' => 'Threshold 2',
+          'amountCents' => '200',
+          'recurring' => false
+        )
+        expect(thresholds).to include hash_including(
+          'thresholdDisplayName' => 'Threshold 3 Recurring',
+          'amountCents' => '1',
+          'recurring' => true
+        )
       end
     end
 
@@ -239,7 +280,7 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
       aggregate_failures do
         expect(result_data['minimumCommitment']).to include(
           'invoiceDisplayName' => minimum_commitment_invoice_display_name,
-          'amountCents' => minimum_commitment_amount_cents.to_s,
+          'amountCents' => minimum_commitment_amount_cents.to_s
         )
         expect(result_data['minimumCommitment']['taxes'].count).to eq(1)
       end
@@ -300,7 +341,7 @@ RSpec.describe Mutations::Plans::Update, type: :graphql do
       aggregate_failures do
         expect(result_data['minimumCommitment']).to include(
           'invoiceDisplayName' => minimum_commitment.invoice_display_name,
-          'amountCents' => minimum_commitment.amount_cents.to_s,
+          'amountCents' => minimum_commitment.amount_cents.to_s
         )
       end
     end

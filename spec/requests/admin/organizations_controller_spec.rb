@@ -8,14 +8,14 @@ RSpec.describe Admin::OrganizationsController, type: [:request, :admin] do
   describe 'PUT /admin/organizations/:id' do
     let(:update_params) do
       {
-        name: 'FooBar',
+        name: 'FooBar'
       }
     end
 
     it 'updates an organization' do
       admin_put(
         "/admin/organizations/#{organization.id}",
-        update_params,
+        update_params
       )
 
       expect(response).to have_http_status(:success)

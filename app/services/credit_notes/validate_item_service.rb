@@ -7,7 +7,6 @@ module CreditNotes
 
       valid_item_amount?
       valid_individual_amount?
-      valid_global_amount?
 
       if errors?
         result.validation_failure!(errors:)
@@ -54,9 +53,9 @@ module CreditNotes
       false
     end
 
-    # NOTE: Check if item amount is positive
+    # NOTE: Check if item amount is not negative
     def valid_item_amount?
-      return true if item.amount_cents.positive?
+      return true unless item.amount_cents.negative?
 
       add_error(field: :amount_cents, error_code: 'invalid_value')
     end
@@ -65,7 +64,11 @@ module CreditNotes
     def valid_individual_amount?
       return true if item.amount_cents <= fee.creditable_amount_cents
 
-      add_error(field: :amount_cents, error_code: 'higher_than_remaining_fee_amount')
+      if invoice.credit? && item.amount_cents > invoice.associated_active_wallet&.balance_cents
+        add_error(field: :amount_cents, error_code: 'higher_than_wallet_balance')
+      else
+        add_error(field: :amount_cents, error_code: 'higher_than_remaining_fee_amount')
+      end
     end
 
     # NOTE: Check if item amount is less than or equal to invoice remaining creditable amount

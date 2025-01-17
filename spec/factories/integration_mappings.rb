@@ -9,7 +9,20 @@ FactoryBot.define do
       {
         external_id: 'netsuite-123',
         external_account_code: 'netsuite-code-1',
-        external_name: 'Credits and Discounts',
+        external_name: 'Credits and Discounts'
+      }
+    end
+  end
+
+  factory :xero_mapping, class: 'IntegrationMappings::XeroMapping' do
+    association :integration, factory: :xero_integration
+    association :mappable, factory: :add_on
+
+    settings do
+      {
+        external_id: 'xero-123',
+        external_account_code: 'xero-code-1',
+        external_name: 'Credits and Discounts'
       }
     end
   end

@@ -1,5 +1,7 @@
 ---
 analytics:
+  overdue_balances:
+    view: true
   view: true
 billable_metrics:
   view: false
@@ -24,17 +26,25 @@ customers:
   create: false
   update: false
   delete: false
+dunning_campaigns:
+  view: true
+  create: true
+  update: true
+  delete: true
+invoice_custom_sections:
+  create: true
+  update: true
+  delete: true
 subscriptions:
   create: false
   update: false
-  delete: false
 wallets:
   create: false
   update: false
   top_up: false
   terminate: false
 invoices:
-  create: false
+  create: true
 developers:
   manage: false
   keys:
@@ -61,3 +71,9 @@ organization:
     create: false
     update: false
     delete: false
+payment_requests:
+  view: true
+  create: true
+payments:
+  view: true
+  create: true

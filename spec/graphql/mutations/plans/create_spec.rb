@@ -56,6 +56,12 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
               properties { amount }
             }
           }
+          usageThresholds {
+            id,
+            amountCents,
+            thresholdDisplayName,
+            recurring
+          }
         }
       }
     GQL
@@ -70,13 +76,15 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
       :billable_metric_filter,
       billable_metric: billable_metrics[0],
       key: 'payment_method',
-      values: %w[card sepa],
+      values: %w[card sepa]
     )
   end
 
   let(:tax) { create(:tax, organization:) }
 
   around { |test| lago_premium!(&test) }
+
+  before { organization.update!(premium_integrations: ['progressive_billing']) }
 
   it_behaves_like 'requires current user'
   it_behaves_like 'requires current organization'
@@ -101,7 +109,7 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
           minimumCommitment: {
             amountCents: minimum_commitment_amount_cents,
             invoiceDisplayName: minimum_commitment_invoice_display_name,
-            taxCodes: [commitment_tax.code],
+            taxCodes: [commitment_tax.code]
           },
           charges: [
             {
@@ -113,9 +121,9 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
                 {
                   invoiceDisplayName: 'Payment Method',
                   properties: {amount: '100.00'},
-                  values: {billable_metric_filter.key => %w[card sepa]},
-                },
-              ],
+                  values: {billable_metric_filter.key => %w[card sepa]}
+                }
+              ]
             },
             {
               billableMetricId: billable_metrics[1].id,
@@ -123,8 +131,8 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
               properties: {
                 amount: '300.00',
                 freeUnits: 10,
-                packageSize: 10,
-              },
+                packageSize: 10
+              }
             },
             {
               billableMetricId: billable_metrics[2].id,
@@ -135,8 +143,8 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
                 freeUnitsPerEvents: 5,
                 freeUnitsPerTotalAggregation: '50',
                 perTransactionMaxAmount: '20',
-                perTransactionMinAmount: '10',
-              },
+                perTransactionMinAmount: '10'
+              }
             },
             {
               billableMetricId: billable_metrics[3].id,
@@ -147,16 +155,16 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
                     fromValue: 0,
                     toValue: 10,
                     perUnitAmount: '2.00',
-                    flatAmount: '0',
+                    flatAmount: '0'
                   },
                   {
                     fromValue: 11,
                     toValue: nil,
                     perUnitAmount: '3.00',
-                    flatAmount: '3.00',
-                  },
-                ],
-              },
+                    flatAmount: '3.00'
+                  }
+                ]
+              }
             },
             {
               billableMetricId: billable_metrics[4].id,
@@ -167,16 +175,16 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
                     fromValue: 0,
                     toValue: 10,
                     perUnitAmount: '2.00',
-                    flatAmount: '0',
+                    flatAmount: '0'
                   },
                   {
                     fromValue: 11,
                     toValue: nil,
                     perUnitAmount: '3.00',
-                    flatAmount: '3.00',
-                  },
-                ],
-              },
+                    flatAmount: '3.00'
+                  }
+                ]
+              }
             },
             {
               billableMetricId: billable_metrics[5].id,
@@ -187,20 +195,35 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
                     fromValue: 0,
                     toValue: 10,
                     flatAmount: '0',
-                    rate: '2',
+                    rate: '2'
                   },
                   {
                     fromValue: 11,
                     toValue: nil,
                     flatAmount: '3.00',
-                    rate: '3',
-                  },
-                ],
-              },
-            },
+                    rate: '3'
+                  }
+                ]
+              }
+            }
           ],
-        },
-      },
+          usageThresholds: [
+            {
+              amountCents: 100,
+              thresholdDisplayName: 'Threshold 1'
+            },
+            {
+              amountCents: 200,
+              thresholdDisplayName: 'Threshold 2'
+            },
+            {
+              amountCents: 1,
+              thresholdDisplayName: 'Threshold 3 Recurring',
+              recurring: true
+            }
+          ]
+        }
+      }
     )
 
     result_data = result['data']['createPlan']
@@ -215,6 +238,7 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
       expect(result_data['amountCents']).to eq('200')
       expect(result_data['taxes'][0]['code']).to eq(plan_tax.code)
       expect(result_data['charges'].count).to eq(6)
+      expect(result_data['usageThresholds'].count).to eq(3)
 
       standard_charge = result_data['charges'][0]
       expect(standard_charge['properties']['amount']).to eq('100.00')
@@ -256,9 +280,26 @@ RSpec.describe Mutations::Plans::Create, type: :graphql do
 
       expect(result_data['minimumCommitment']).to include(
         'invoiceDisplayName' => minimum_commitment_invoice_display_name,
-        'amountCents' => minimum_commitment_amount_cents.to_s,
+        'amountCents' => minimum_commitment_amount_cents.to_s
       )
       expect(result_data['minimumCommitment']['taxes'].count).to eq(1)
+
+      thresholds = result_data['usageThresholds'].sort_by { |threshold| threshold['thresholdDisplayName'] }
+      expect(thresholds).to include hash_including(
+        'thresholdDisplayName' => 'Threshold 1',
+        'amountCents' => '100',
+        'recurring' => false
+      )
+      expect(thresholds).to include hash_including(
+        'thresholdDisplayName' => 'Threshold 2',
+        'amountCents' => '200',
+        'recurring' => false
+      )
+      expect(thresholds).to include hash_including(
+        'thresholdDisplayName' => 'Threshold 3 Recurring',
+        'amountCents' => '1',
+        'recurring' => true
+      )
     end
   end
 end

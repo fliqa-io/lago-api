@@ -10,9 +10,9 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
       subscription:,
       boundaries: {
         from_datetime:,
-        to_datetime:,
+        to_datetime:
       },
-      filters:,
+      filters:
     )
   end
 
@@ -32,14 +32,14 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
       organization:,
       aggregation_type: 'sum_agg',
       field_name: 'total_count',
-      recurring: true,
+      recurring: true
     )
   end
 
   let(:charge) do
     create(
       :standard_charge,
-      billable_metric:,
+      billable_metric:
     )
   end
 
@@ -58,8 +58,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
       subscription:,
       timestamp: subscription.started_at + 3.months,
       properties: {
-        total_count: 2.5,
-      },
+        total_count: 2.5
+      }
     )
   end
   let(:latest_events) do
@@ -72,8 +72,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
       subscription:,
       timestamp: from_datetime + 25.days,
       properties: {
-        total_count: 12,
-      },
+        total_count: 12
+      }
     )
   end
 
@@ -114,8 +114,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         subscription:,
         timestamp: to_datetime + 1.day,
         properties: {
-          total_count: 12,
-        },
+          total_count: 12
+        }
       )
     end
 
@@ -150,8 +150,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         subscription:,
         timestamp: from_datetime + 30.days,
         properties: {
-          total_count: 4.5,
-        },
+          total_count: 4.5
+        }
       )
     end
 
@@ -172,8 +172,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         subscription:,
         timestamp: from_datetime + 30.days,
         properties: {
-          total_count: 'foo_bar',
-        },
+          total_count: 'foo_bar'
+        }
       )
     end
 
@@ -199,6 +199,31 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
       expect(result.aggregation).to eq(9.64517)
       expect(result.current_usage_units).to eq(29)
     end
+
+    context 'when rounding is configured' do
+      let(:billable_metric) do
+        create(
+          :billable_metric,
+          organization:,
+          aggregation_type: 'sum_agg',
+          field_name: 'total_count',
+          recurring: true,
+          rounding_function: 'ceil',
+          rounding_precision: 2
+        )
+      end
+
+      before do
+        latest_events.last.update!(properties: {total_count: 12.434})
+      end
+
+      it 'aggregates the events' do
+        result = sum_service.aggregate(options:)
+
+        expect(result.aggregation).to eq(9.73)
+        expect(result.current_usage_units).to eq(29.44)
+      end
+    end
   end
 
   context 'when current usage context and charge is pay in advance' do
@@ -215,8 +240,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         subscription:,
         timestamp: to_datetime - 3.days,
         properties: {
-          total_count: 4,
-        },
+          total_count: 4
+        }
       )
     end
 
@@ -227,10 +252,11 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         charge:,
         external_subscription_id: subscription.external_id,
         event_id: latest_events.id,
+        event_transaction_id: latest_events.transaction_id,
         timestamp: latest_events.timestamp,
         current_aggregation: '4',
         max_aggregation: '6',
-        max_aggregation_with_proration: '3.8',
+        max_aggregation_with_proration: '3.8'
       )
     end
 
@@ -286,8 +312,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         subscription:,
         timestamp: to_datetime - 10.days,
         properties: {
-          total_count: 4,
-        },
+          total_count: 4
+        }
       )
     end
 
@@ -298,10 +324,11 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         charge:,
         external_subscription_id: subscription.external_id,
         event_id: latest_events.id,
+        event_transaction_id: latest_events.transaction_id,
         timestamp: latest_events.timestamp,
         current_aggregation: '4',
         max_aggregation: '6',
-        max_aggregation_with_proration: '3.8',
+        max_aggregation_with_proration: '3.8'
       )
     end
 
@@ -328,8 +355,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         timestamp: from_datetime + 30.days,
         properties: {
           total_count: 12,
-          region: 'europe',
-        },
+          region: 'europe'
+        }
       )
 
       create(
@@ -341,8 +368,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         timestamp: from_datetime + 30.days,
         properties: {
           total_count: 8,
-          region: 'europe',
-        },
+          region: 'europe'
+        }
       )
 
       create(
@@ -354,8 +381,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         timestamp: from_datetime + 30.days,
         properties: {
           total_count: 12,
-          region: 'africa',
-        },
+          region: 'africa'
+        }
       )
     end
 
@@ -376,7 +403,7 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         customer:,
         started_at: from_datetime - 10.days,
         terminated_at: from_datetime,
-        status: :terminated,
+        status: :terminated
       )
     end
 
@@ -391,8 +418,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         subscription: old_subscription,
         timestamp: from_datetime - 5.days,
         properties: {
-          total_count: 10,
-        },
+          total_count: 10
+        }
       )
     end
 
@@ -414,7 +441,7 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
         customer:,
         subscription:,
         timestamp: from_datetime + 29.days,
-        properties:,
+        properties:
       )
     end
 
@@ -436,8 +463,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
           subscription:,
           timestamp: from_datetime + 28.days,
           properties: {
-            total_count: -6,
-          },
+            total_count: -6
+          }
         )
       end
 
@@ -448,10 +475,11 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
           charge:,
           external_subscription_id: subscription.external_id,
           event_id: latest_events.id,
+          event_transaction_id: latest_events.transaction_id,
           timestamp: latest_events.timestamp,
           current_aggregation: '4',
           max_aggregation: '10',
-          max_aggregation_with_proration: '3.2',
+          max_aggregation_with_proration: '3.2'
         )
       end
 
@@ -475,8 +503,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
           subscription:,
           timestamp: from_datetime + 28.days,
           properties: {
-            total_count: -6,
-          },
+            total_count: -6
+          }
         )
       end
 
@@ -487,10 +515,11 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
           charge:,
           external_subscription_id: subscription.external_id,
           event_id: latest_events.id,
+          event_transaction_id: latest_events.transaction_id,
           timestamp: latest_events.timestamp,
           current_aggregation: '4',
           max_aggregation: '10',
-          max_aggregation_with_proration: '3.2',
+          max_aggregation_with_proration: '3.2'
         )
       end
 
@@ -562,8 +591,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
           timestamp: subscription.started_at + 3.months,
           properties: {
             total_count: 2.5,
-            agent_name:,
-          },
+            agent_name:
+          }
         )
       end.flatten
     end
@@ -580,8 +609,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
           timestamp: from_datetime + 25.days,
           properties: {
             total_count: 12,
-            agent_name:,
-          },
+            agent_name:
+          }
         )
       end.flatten
     end
@@ -616,8 +645,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
             timestamp: subscription.started_at + 3.months,
             properties: {
               total_count: 2.5,
-              agent_name:,
-            },
+              agent_name:
+            }
           )
         end.flatten
       end
@@ -634,8 +663,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
             timestamp: from_datetime + 25.days,
             properties: {
               total_count: 12,
-              agent_name:,
-            },
+              agent_name:
+            }
           )
         end.flatten
       end
@@ -669,8 +698,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
               timestamp: to_datetime - 3.days,
               properties: {
                 total_count: 4,
-                agent_name:,
-              },
+                agent_name:
+              }
             )
           end.flatten
         end
@@ -682,11 +711,12 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
             charge:,
             external_subscription_id: subscription.external_id,
             event_id: latest_events.first.id,
+            event_transaction_id: latest_events.first.transaction_id,
             timestamp: latest_events.first.timestamp,
             current_aggregation: '4',
             max_aggregation: '6',
             max_aggregation_with_proration: '3.8',
-            grouped_by: {'agent_name' => agent_names.first},
+            grouped_by: {'agent_name' => agent_names.first}
           )
         end
 
@@ -755,8 +785,8 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
               timestamp: to_datetime - 10.days,
               properties: {
                 total_count: 4,
-                agent_name:,
-              },
+                agent_name:
+              }
             )
           end.flatten
         end
@@ -768,11 +798,12 @@ RSpec.describe BillableMetrics::ProratedAggregations::SumService, type: :service
             charge:,
             external_subscription_id: subscription.external_id,
             event_id: latest_events.first.id,
+            event_transaction_id: latest_events.first.transaction_id,
             timestamp: latest_events.first.timestamp,
             current_aggregation: '4',
             max_aggregation: '6',
             max_aggregation_with_proration: '3.8',
-            grouped_by: {'agent_name' => agent_names.first},
+            grouped_by: {'agent_name' => agent_names.first}
           )
         end
 

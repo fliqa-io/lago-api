@@ -18,11 +18,12 @@ RSpec.describe Mutations::Integrations::Netsuite::Create, type: :graphql do
           name,
           clientId,
           clientSecret,
-          syncSalesOrders,
           syncInvoices,
           syncCreditNotes,
           syncPayments,
-          scriptEndpointUrl
+          scriptEndpointUrl,
+          tokenId,
+          tokenSecret
         }
       }
     GQL
@@ -50,9 +51,11 @@ RSpec.describe Mutations::Integrations::Netsuite::Create, type: :graphql do
           accountId: '012',
           clientId: '123',
           clientSecret: '456',
-          connectionId: 'this-is-random-uuid',
-        },
-      },
+          tokenId: 'xyz',
+          tokenSecret: 'zyx',
+          connectionId: 'this-is-random-uuid'
+        }
+      }
     )
 
     result_data = result['data']['createNetsuiteIntegration']
@@ -61,6 +64,8 @@ RSpec.describe Mutations::Integrations::Netsuite::Create, type: :graphql do
       expect(result_data['id']).to be_present
       expect(result_data['code']).to eq(code)
       expect(result_data['name']).to eq(name)
+      expect(result_data['tokenId']).to eq('xyz')
+      expect(result_data['tokenSecret']).to eq('••••••••…zyx')
       expect(result_data['scriptEndpointUrl']).to eq(script_endpoint_url)
     end
   end

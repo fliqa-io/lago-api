@@ -7,7 +7,7 @@ module Types
       description 'Base billable metric'
 
       field :id, ID, null: false
-      field :organization, Types::OrganizationType
+      field :organization, Types::Organizations::OrganizationType
 
       field :code, String, null: false
       field :name, String, null: false
@@ -15,6 +15,7 @@ module Types
       field :description, String
 
       field :aggregation_type, Types::BillableMetrics::AggregationTypeEnum, null: false
+      field :expression, String, null: true
       field :field_name, String, null: true
       field :weighted_interval, Types::BillableMetrics::WeightedIntervalEnum, null: true
 
@@ -26,31 +27,39 @@ module Types
       field :recurring, Boolean, null: false
       field :subscriptions_count, Integer, null: false
 
+      field :rounding_function, Types::BillableMetrics::RoundingFunctionEnum, null: true
+      field :rounding_precision, Integer, null: true
+
       field :created_at, GraphQL::Types::ISO8601DateTime, null: false
       field :deleted_at, GraphQL::Types::ISO8601DateTime, null: true
       field :updated_at, GraphQL::Types::ISO8601DateTime, null: false
 
-      field :integration_mappings, [Types::IntegrationMappings::Object], null: true
+      field :integration_mappings, [Types::IntegrationMappings::Object], null: true do
+        argument :integration_id, ID, required: false
+      end
 
       def subscriptions_count
         object.plans.joins(:subscriptions).count
       end
 
       def active_subscriptions_count
-        object.plans.joins(:subscriptions).merge(Subscription.active).count
+        Subscription.active.where(plan_id: object.charges.select(:plan_id).distinct).count
       end
 
       def draft_invoices_count
-        object.charges
-          .joins(fees: [:invoice])
-          .merge(Invoice.draft)
-          .select(:invoice_id)
-          .distinct
-          .count
+        Invoice.draft.where(id: object.charges
+          .joins(:fees)
+          .select(:invoice_id)).count
       end
 
       def plans_count
         object.plans.distinct.count
+      end
+
+      def integration_mappings(integration_id: nil)
+        mappings = object.integration_mappings
+        mappings = mappings.where(integration_id:) if integration_id
+        mappings
       end
     end
   end

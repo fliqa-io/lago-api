@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
+ActiveRecord::Schema[7.1].define(version: 2024_12_27_161927) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -18,8 +18,14 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
 
   # Custom types defined in this database.
   # Note that some types may not work with other database engines. Be careful if changing database.
+  create_enum "billable_metric_rounding_function", ["round", "floor", "ceil"]
   create_enum "billable_metric_weighted_interval", ["seconds"]
-  create_enum "subscription_invoicing_reason", ["subscription_starting", "subscription_periodic", "subscription_terminating", "in_advance_charge"]
+  create_enum "customer_type", ["company", "individual"]
+  create_enum "inbound_webhook_status", ["pending", "processing", "succeeded", "failed"]
+  create_enum "payment_payable_payment_status", ["pending", "processing", "succeeded", "failed"]
+  create_enum "payment_type", ["provider", "manual"]
+  create_enum "subscription_invoicing_reason", ["subscription_starting", "subscription_periodic", "subscription_terminating", "in_advance_charge", "in_advance_charge_periodic", "progressive_billing"]
+  create_enum "tax_status", ["pending", "succeeded", "failed"]
 
   create_table "active_storage_attachments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
@@ -28,6 +34,7 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.datetime "created_at", null: false
     t.uuid "record_id"
     t.index ["blob_id"], name: "index_active_storage_attachments_on_blob_id"
+    t.index ["record_type", "record_id", "name", "blob_id"], name: "index_active_storage_attachments_uniqueness", unique: true
   end
 
   create_table "active_storage_blobs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -91,12 +98,26 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.uuid "group_id"
     t.jsonb "grouped_by", default: {}, null: false
     t.uuid "charge_filter_id"
+    t.decimal "unit_precise_amount_cents", precision: 40, scale: 15, default: "0.0", null: false
     t.index ["charge_filter_id"], name: "index_adjusted_fees_on_charge_filter_id"
     t.index ["charge_id"], name: "index_adjusted_fees_on_charge_id"
     t.index ["fee_id"], name: "index_adjusted_fees_on_fee_id"
     t.index ["group_id"], name: "index_adjusted_fees_on_group_id"
     t.index ["invoice_id"], name: "index_adjusted_fees_on_invoice_id"
     t.index ["subscription_id"], name: "index_adjusted_fees_on_subscription_id"
+  end
+
+  create_table "api_keys", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "organization_id", null: false
+    t.string "value", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "expires_at"
+    t.datetime "last_used_at"
+    t.string "name"
+    t.jsonb "permissions", null: false
+    t.index ["organization_id"], name: "index_api_keys_on_organization_id"
+    t.index ["value"], name: "index_api_keys_on_value", unique: true
   end
 
   create_table "applied_add_ons", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -128,6 +149,28 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.index ["customer_id"], name: "index_applied_coupons_on_customer_id"
   end
 
+  create_table "applied_invoice_custom_sections", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "name", null: false
+    t.string "code", null: false
+    t.string "display_name"
+    t.string "details"
+    t.uuid "invoice_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["invoice_id"], name: "index_applied_invoice_custom_sections_on_invoice_id"
+  end
+
+  create_table "applied_usage_thresholds", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "usage_threshold_id", null: false
+    t.uuid "invoice_id", null: false
+    t.bigint "lifetime_usage_amount_cents", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["invoice_id"], name: "index_applied_usage_thresholds_on_invoice_id"
+    t.index ["usage_threshold_id", "invoice_id"], name: "idx_on_usage_threshold_id_invoice_id_cb82cdf163", unique: true
+    t.index ["usage_threshold_id"], name: "index_applied_usage_thresholds_on_usage_threshold_id"
+  end
+
   create_table "billable_metric_filters", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "billable_metric_id", null: false
     t.string "key", null: false
@@ -154,7 +197,11 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.boolean "recurring", default: false, null: false
     t.enum "weighted_interval", enum_type: "billable_metric_weighted_interval"
     t.text "custom_aggregator"
+    t.string "expression"
+    t.enum "rounding_function", enum_type: "billable_metric_rounding_function"
+    t.integer "rounding_precision"
     t.index ["deleted_at"], name: "index_billable_metrics_on_deleted_at"
+    t.index ["organization_id", "code", "expression"], name: "index_billable_metrics_on_org_id_and_code_and_expr", where: "((expression IS NOT NULL) AND ((expression)::text <> ''::text))"
     t.index ["organization_id", "code"], name: "index_billable_metrics_on_organization_id_and_code", unique: true, where: "(deleted_at IS NULL)"
     t.index ["organization_id"], name: "index_billable_metrics_on_organization_id"
   end
@@ -174,14 +221,17 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.jsonb "grouped_by", default: {}, null: false
     t.uuid "charge_filter_id"
     t.decimal "current_amount"
+    t.string "event_transaction_id"
     t.index ["charge_id"], name: "index_cached_aggregations_on_charge_id"
     t.index ["event_id"], name: "index_cached_aggregations_on_event_id"
     t.index ["external_subscription_id"], name: "index_cached_aggregations_on_external_subscription_id"
     t.index ["group_id"], name: "index_cached_aggregations_on_group_id"
+    t.index ["organization_id", "event_transaction_id"], name: "index_cached_aggregations_on_event_transaction_id"
     t.index ["organization_id", "timestamp", "charge_id", "charge_filter_id"], name: "index_timestamp_filter_lookup"
     t.index ["organization_id", "timestamp", "charge_id", "group_id"], name: "index_timestamp_group_lookup"
     t.index ["organization_id", "timestamp", "charge_id"], name: "index_timestamp_lookup"
     t.index ["organization_id"], name: "index_cached_aggregations_on_organization_id"
+    t.index ["timestamp", "charge_id", "external_subscription_id"], name: "idx_on_timestamp_charge_id_external_subscription_id"
   end
 
   create_table "charge_filter_values", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -223,8 +273,11 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.boolean "invoiceable", default: true, null: false
     t.boolean "prorated", default: false, null: false
     t.string "invoice_display_name"
-    t.index ["billable_metric_id"], name: "index_charges_on_billable_metric_id"
+    t.integer "regroup_paid_fees"
+    t.uuid "parent_id"
+    t.index ["billable_metric_id"], name: "index_charges_on_billable_metric_id", where: "(deleted_at IS NULL)"
     t.index ["deleted_at"], name: "index_charges_on_deleted_at"
+    t.index ["parent_id"], name: "index_charges_on_parent_id"
     t.index ["plan_id"], name: "index_charges_on_plan_id"
   end
 
@@ -344,7 +397,7 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
 
   create_table "credit_notes_taxes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "credit_note_id", null: false
-    t.uuid "tax_id", null: false
+    t.uuid "tax_id"
     t.string "tax_description"
     t.string "tax_code", null: false
     t.string "tax_name", null: false
@@ -354,8 +407,9 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "base_amount_cents", default: 0, null: false
-    t.index ["credit_note_id", "tax_id"], name: "index_credit_notes_taxes_on_credit_note_id_and_tax_id", unique: true
+    t.index ["credit_note_id", "tax_code"], name: "index_credit_notes_taxes_on_credit_note_id_and_tax_code", unique: true
     t.index ["credit_note_id"], name: "index_credit_notes_taxes_on_credit_note_id"
+    t.index ["tax_code"], name: "index_credit_notes_taxes_on_tax_code"
     t.index ["tax_id"], name: "index_credit_notes_taxes_on_tax_id"
   end
 
@@ -368,9 +422,11 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.datetime "updated_at", null: false
     t.uuid "credit_note_id"
     t.boolean "before_taxes", default: false, null: false
+    t.uuid "progressive_billing_invoice_id"
     t.index ["applied_coupon_id"], name: "index_credits_on_applied_coupon_id"
     t.index ["credit_note_id"], name: "index_credits_on_credit_note_id"
     t.index ["invoice_id"], name: "index_credits_on_invoice_id"
+    t.index ["progressive_billing_invoice_id"], name: "index_credits_on_progressive_billing_invoice_id"
   end
 
   create_table "customer_metadata", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -415,6 +471,22 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.integer "net_payment_term"
     t.string "external_salesforce_id"
     t.string "payment_provider_code"
+    t.string "shipping_address_line1"
+    t.string "shipping_address_line2"
+    t.string "shipping_city"
+    t.string "shipping_zipcode"
+    t.string "shipping_state"
+    t.string "shipping_country"
+    t.integer "finalize_zero_amount_invoice", default: 0, null: false
+    t.string "firstname"
+    t.string "lastname"
+    t.enum "customer_type", enum_type: "customer_type"
+    t.uuid "applied_dunning_campaign_id"
+    t.boolean "exclude_from_dunning_campaign", default: false, null: false
+    t.integer "last_dunning_campaign_attempt", default: 0, null: false
+    t.datetime "last_dunning_campaign_attempt_at", precision: nil
+    t.boolean "skip_invoice_custom_sections", default: false, null: false
+    t.index ["applied_dunning_campaign_id"], name: "index_customers_on_applied_dunning_campaign_id"
     t.index ["deleted_at"], name: "index_customers_on_deleted_at"
     t.index ["external_id", "organization_id"], name: "index_customers_on_external_id_and_organization_id", unique: true, where: "(deleted_at IS NULL)"
     t.index ["organization_id"], name: "index_customers_on_organization_id"
@@ -432,6 +504,97 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.index ["tax_id"], name: "index_customers_taxes_on_tax_id"
   end
 
+  create_table "daily_usages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "organization_id", null: false
+    t.uuid "customer_id", null: false
+    t.uuid "subscription_id", null: false
+    t.string "external_subscription_id", null: false
+    t.datetime "from_datetime", null: false
+    t.datetime "to_datetime", null: false
+    t.jsonb "usage", default: "{}", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "refreshed_at", null: false
+    t.jsonb "usage_diff", default: "{}", null: false
+    t.date "usage_date"
+    t.index ["customer_id"], name: "index_daily_usages_on_customer_id"
+    t.index ["organization_id", "external_subscription_id"], name: "idx_on_organization_id_external_subscription_id_df3a30d96d"
+    t.index ["organization_id"], name: "index_daily_usages_on_organization_id"
+    t.index ["subscription_id"], name: "index_daily_usages_on_subscription_id"
+    t.index ["usage_date"], name: "index_daily_usages_on_usage_date"
+  end
+
+  create_table "data_export_parts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "index"
+    t.uuid "data_export_id", null: false
+    t.uuid "object_ids", null: false, array: true
+    t.boolean "completed", default: false, null: false
+    t.text "csv_lines"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["data_export_id"], name: "index_data_export_parts_on_data_export_id"
+  end
+
+  create_table "data_exports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "format"
+    t.string "resource_type", null: false
+    t.jsonb "resource_query", default: {}
+    t.integer "status", default: 0, null: false
+    t.datetime "expires_at", precision: nil
+    t.datetime "started_at", precision: nil
+    t.datetime "completed_at", precision: nil
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "membership_id"
+    t.uuid "organization_id"
+    t.index ["membership_id"], name: "index_data_exports_on_membership_id"
+    t.index ["organization_id"], name: "index_data_exports_on_organization_id"
+  end
+
+  create_table "dunning_campaign_thresholds", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "dunning_campaign_id", null: false
+    t.string "currency", null: false
+    t.bigint "amount_cents", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "deleted_at", precision: nil
+    t.index ["deleted_at"], name: "index_dunning_campaign_thresholds_on_deleted_at"
+    t.index ["dunning_campaign_id", "currency"], name: "idx_on_dunning_campaign_id_currency_fbf233b2ae", unique: true, where: "(deleted_at IS NULL)"
+    t.index ["dunning_campaign_id"], name: "index_dunning_campaign_thresholds_on_dunning_campaign_id"
+  end
+
+  create_table "dunning_campaigns", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "organization_id", null: false
+    t.string "name", null: false
+    t.string "code", null: false
+    t.text "description"
+    t.boolean "applied_to_organization", default: false, null: false
+    t.integer "days_between_attempts", default: 1, null: false
+    t.integer "max_attempts", default: 1, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "deleted_at", precision: nil
+    t.index ["deleted_at"], name: "index_dunning_campaigns_on_deleted_at"
+    t.index ["organization_id", "code"], name: "index_dunning_campaigns_on_organization_id_and_code", unique: true, where: "(deleted_at IS NULL)"
+    t.index ["organization_id"], name: "index_dunning_campaigns_on_organization_id"
+    t.index ["organization_id"], name: "index_unique_applied_to_organization_per_organization", unique: true, where: "((applied_to_organization = true) AND (deleted_at IS NULL))"
+  end
+
+  create_table "error_details", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "owner_type", null: false
+    t.uuid "owner_id", null: false
+    t.uuid "organization_id", null: false
+    t.jsonb "details", default: {}, null: false
+    t.datetime "deleted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.integer "error_code", default: 0, null: false
+    t.index ["deleted_at"], name: "index_error_details_on_deleted_at"
+    t.index ["error_code"], name: "index_error_details_on_error_code"
+    t.index ["organization_id"], name: "index_error_details_on_organization_id"
+    t.index ["owner_type", "owner_id"], name: "index_error_details_on_owner"
+  end
+
   create_table "events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "organization_id", null: false
     t.uuid "customer_id"
@@ -446,8 +609,11 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.datetime "deleted_at"
     t.string "external_customer_id"
     t.string "external_subscription_id"
+    t.decimal "precise_total_amount_cents", precision: 40, scale: 15
     t.index ["customer_id"], name: "index_events_on_customer_id"
     t.index ["deleted_at"], name: "index_events_on_deleted_at"
+    t.index ["external_subscription_id", "code", "timestamp"], name: "index_events_on_external_subscription_id_precise_amount", where: "((deleted_at IS NULL) AND (precise_total_amount_cents IS NOT NULL))", include: ["organization_id", "precise_total_amount_cents"]
+    t.index ["external_subscription_id", "code", "timestamp"], name: "index_events_on_external_subscription_id_with_included", where: "(deleted_at IS NULL)", include: ["organization_id", "properties"]
     t.index ["organization_id", "code", "created_at"], name: "index_events_on_organization_id_and_code_and_created_at", where: "(deleted_at IS NULL)"
     t.index ["organization_id", "code"], name: "index_events_on_organization_id_and_code"
     t.index ["organization_id", "external_subscription_id", "code", "timestamp"], name: "index_events_on_external_subscription_id_and_code_and_timestamp", where: "(deleted_at IS NULL)"
@@ -494,20 +660,30 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.jsonb "amount_details", default: {}, null: false
     t.uuid "charge_filter_id"
     t.jsonb "grouped_by", default: {}, null: false
+    t.string "pay_in_advance_event_transaction_id"
+    t.datetime "deleted_at"
+    t.decimal "precise_amount_cents", precision: 40, scale: 15, default: "0.0", null: false
+    t.decimal "taxes_precise_amount_cents", precision: 40, scale: 15, default: "0.0", null: false
+    t.float "taxes_base_rate", default: 1.0, null: false
+    t.uuid "organization_id"
     t.index ["add_on_id"], name: "index_fees_on_add_on_id"
     t.index ["applied_add_on_id"], name: "index_fees_on_applied_add_on_id"
     t.index ["charge_filter_id"], name: "index_fees_on_charge_filter_id"
+    t.index ["charge_id", "invoice_id"], name: "index_fees_on_charge_id_and_invoice_id", where: "(deleted_at IS NULL)"
     t.index ["charge_id"], name: "index_fees_on_charge_id"
+    t.index ["deleted_at"], name: "index_fees_on_deleted_at"
     t.index ["group_id"], name: "index_fees_on_group_id"
     t.index ["invoice_id"], name: "index_fees_on_invoice_id"
     t.index ["invoiceable_type", "invoiceable_id"], name: "index_fees_on_invoiceable"
+    t.index ["organization_id"], name: "index_fees_on_organization_id"
+    t.index ["pay_in_advance_event_transaction_id"], name: "index_fees_on_pay_in_advance_event_transaction_id", where: "(deleted_at IS NULL)"
     t.index ["subscription_id"], name: "index_fees_on_subscription_id"
     t.index ["true_up_parent_fee_id"], name: "index_fees_on_true_up_parent_fee_id"
   end
 
   create_table "fees_taxes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "fee_id", null: false
-    t.uuid "tax_id", null: false
+    t.uuid "tax_id"
     t.string "tax_description"
     t.string "tax_code", null: false
     t.string "tax_name", null: false
@@ -516,7 +692,8 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.string "amount_currency", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["fee_id", "tax_id"], name: "index_fees_taxes_on_fee_id_and_tax_id", unique: true, where: "(created_at >= '2023-09-12 00:00:00'::timestamp without time zone)"
+    t.decimal "precise_amount_cents", precision: 40, scale: 15, default: "0.0", null: false
+    t.index ["fee_id", "tax_id"], name: "index_fees_taxes_on_fee_id_and_tax_id", unique: true, where: "((tax_id IS NOT NULL) AND (created_at >= '2023-09-12 00:00:00'::timestamp without time zone))"
     t.index ["fee_id"], name: "index_fees_taxes_on_fee_id"
     t.index ["tax_id"], name: "index_fees_taxes_on_tax_id"
   end
@@ -549,6 +726,22 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.index ["parent_group_id"], name: "index_groups_on_parent_group_id"
   end
 
+  create_table "inbound_webhooks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "source", null: false
+    t.string "event_type", null: false
+    t.jsonb "payload", null: false
+    t.enum "status", default: "pending", null: false, enum_type: "inbound_webhook_status"
+    t.uuid "organization_id", null: false
+    t.string "code"
+    t.string "signature"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "processing_at", precision: nil
+    t.index ["organization_id"], name: "index_inbound_webhooks_on_organization_id"
+    t.index ["status", "created_at"], name: "index_inbound_webhooks_on_status_and_created_at", where: "(status = 'pending'::inbound_webhook_status)"
+    t.index ["status", "processing_at"], name: "index_inbound_webhooks_on_status_and_processing_at", where: "(status = 'processing'::inbound_webhook_status)"
+  end
+
   create_table "integration_collection_mappings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "integration_id", null: false
     t.integer "mapping_type", null: false
@@ -563,7 +756,7 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
   create_table "integration_customers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "integration_id", null: false
     t.uuid "customer_id", null: false
-    t.string "external_customer_id", null: false
+    t.string "external_customer_id"
     t.string "type", null: false
     t.jsonb "settings", default: {}, null: false
     t.datetime "created_at", null: false
@@ -582,7 +775,7 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.string "external_name"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["external_id", "integration_id"], name: "index_integration_items_on_external_id_and_integration_id", unique: true
+    t.index ["external_id", "integration_id", "item_type"], name: "index_int_items_on_external_id_and_int_id_and_type", unique: true
     t.index ["integration_id"], name: "index_integration_items_on_integration_id"
   end
 
@@ -596,6 +789,18 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.datetime "updated_at", null: false
     t.index ["integration_id"], name: "index_integration_mappings_on_integration_id"
     t.index ["mappable_type", "mappable_id"], name: "index_integration_mappings_on_mappable"
+  end
+
+  create_table "integration_resources", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "syncable_type", null: false
+    t.uuid "syncable_id", null: false
+    t.string "external_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "integration_id"
+    t.integer "resource_type", default: 0, null: false
+    t.index ["integration_id"], name: "index_integration_resources_on_integration_id"
+    t.index ["syncable_type", "syncable_id"], name: "index_integration_resources_on_syncable"
   end
 
   create_table "integrations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -625,6 +830,41 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.index ["membership_id"], name: "index_invites_on_membership_id"
     t.index ["organization_id"], name: "index_invites_on_organization_id"
     t.index ["token"], name: "index_invites_on_token", unique: true
+  end
+
+  create_table "invoice_custom_section_selections", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "invoice_custom_section_id", null: false
+    t.uuid "organization_id"
+    t.uuid "customer_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["customer_id"], name: "index_invoice_custom_section_selections_on_customer_id"
+    t.index ["invoice_custom_section_id"], name: "idx_on_invoice_custom_section_id_7edbcef7b5"
+    t.index ["organization_id"], name: "index_invoice_custom_section_selections_on_organization_id"
+  end
+
+  create_table "invoice_custom_sections", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "name", null: false
+    t.string "code", null: false
+    t.string "description"
+    t.string "display_name"
+    t.string "details"
+    t.uuid "organization_id", null: false
+    t.datetime "deleted_at", precision: nil
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "code"], name: "index_invoice_custom_sections_on_organization_id_and_code", unique: true, where: "(deleted_at IS NULL)"
+    t.index ["organization_id", "deleted_at"], name: "idx_on_organization_id_deleted_at_225e3f789d"
+    t.index ["organization_id"], name: "index_invoice_custom_sections_on_organization_id"
+  end
+
+  create_table "invoice_errors", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "backtrace"
+    t.json "invoice"
+    t.json "subscriptions"
+    t.json "error"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "invoice_metadata", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -691,15 +931,36 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.boolean "ready_to_be_refreshed", default: false, null: false
     t.datetime "payment_dispute_lost_at"
     t.boolean "skip_charges", default: false, null: false
+    t.boolean "payment_overdue", default: false
+    t.bigint "negative_amount_cents", default: 0, null: false
+    t.bigint "progressive_billing_credit_amount_cents", default: 0, null: false
+    t.enum "tax_status", enum_type: "tax_status"
+    t.bigint "total_paid_amount_cents", default: 0, null: false
     t.index ["customer_id", "sequential_id"], name: "index_invoices_on_customer_id_and_sequential_id", unique: true
     t.index ["customer_id"], name: "index_invoices_on_customer_id"
+    t.index ["issuing_date"], name: "index_invoices_on_issuing_date"
+    t.index ["number"], name: "index_invoices_on_number"
     t.index ["organization_id"], name: "index_invoices_on_organization_id"
+    t.index ["payment_overdue"], name: "index_invoices_on_payment_overdue"
+    t.index ["ready_to_be_refreshed"], name: "index_invoices_on_ready_to_be_refreshed", where: "(ready_to_be_refreshed = true)"
+    t.index ["sequential_id"], name: "index_invoices_on_sequential_id"
+    t.index ["status"], name: "index_invoices_on_status"
     t.check_constraint "net_payment_term >= 0", name: "check_organizations_on_net_payment_term"
+  end
+
+  create_table "invoices_payment_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "invoice_id", null: false
+    t.uuid "payment_request_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["invoice_id", "payment_request_id"], name: "idx_on_invoice_id_payment_request_id_aa550779a4", unique: true
+    t.index ["invoice_id"], name: "index_invoices_payment_requests_on_invoice_id"
+    t.index ["payment_request_id"], name: "index_invoices_payment_requests_on_payment_request_id"
   end
 
   create_table "invoices_taxes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "invoice_id", null: false
-    t.uuid "tax_id", null: false
+    t.uuid "tax_id"
     t.string "tax_description"
     t.string "tax_code", null: false
     t.string "tax_name", null: false
@@ -709,9 +970,29 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "fees_amount_cents", default: 0, null: false
-    t.index ["invoice_id", "tax_id"], name: "index_invoices_taxes_on_invoice_id_and_tax_id", unique: true, where: "(created_at >= '2023-09-12 00:00:00'::timestamp without time zone)"
+    t.bigint "taxable_base_amount_cents", default: 0, null: false
+    t.index ["invoice_id", "tax_id"], name: "index_invoices_taxes_on_invoice_id_and_tax_id", unique: true, where: "((tax_id IS NOT NULL) AND (created_at >= '2023-09-12 00:00:00'::timestamp without time zone))"
     t.index ["invoice_id"], name: "index_invoices_taxes_on_invoice_id"
     t.index ["tax_id"], name: "index_invoices_taxes_on_tax_id"
+  end
+
+  create_table "lifetime_usages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "organization_id", null: false
+    t.uuid "subscription_id", null: false
+    t.bigint "current_usage_amount_cents", default: 0, null: false
+    t.bigint "invoiced_usage_amount_cents", default: 0, null: false
+    t.boolean "recalculate_current_usage", default: false, null: false
+    t.boolean "recalculate_invoiced_usage", default: false, null: false
+    t.datetime "current_usage_amount_refreshed_at", precision: nil
+    t.datetime "invoiced_usage_amount_refreshed_at", precision: nil
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "deleted_at"
+    t.bigint "historical_usage_amount_cents", default: 0, null: false
+    t.index ["organization_id"], name: "index_lifetime_usages_on_organization_id"
+    t.index ["recalculate_current_usage"], name: "index_lifetime_usages_on_recalculate_current_usage", where: "((deleted_at IS NULL) AND (recalculate_current_usage = true))"
+    t.index ["recalculate_invoiced_usage"], name: "index_lifetime_usages_on_recalculate_invoiced_usage", where: "((deleted_at IS NULL) AND (recalculate_invoiced_usage = true))"
+    t.index ["subscription_id"], name: "index_lifetime_usages_on_subscription_id", unique: true
   end
 
   create_table "memberships", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -758,7 +1039,11 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.boolean "clickhouse_aggregation", default: false, null: false
     t.string "premium_integrations", default: [], null: false, array: true
     t.boolean "custom_aggregation", default: false
+    t.boolean "finalize_zero_amount_invoice", default: true, null: false
+    t.boolean "clickhouse_events_store", default: false, null: false
+    t.string "hmac_key", null: false
     t.index ["api_key"], name: "index_organizations_on_api_key", unique: true
+    t.index ["hmac_key"], name: "index_organizations_on_hmac_key", unique: true
     t.check_constraint "invoice_grace_period >= 0", name: "check_organizations_on_invoice_grace_period"
     t.check_constraint "net_payment_term >= 0", name: "check_organizations_on_net_payment_term"
   end
@@ -781,7 +1066,8 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.jsonb "settings", default: {}, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["customer_id", "type"], name: "index_payment_provider_customers_on_customer_id_and_type", unique: true
+    t.datetime "deleted_at"
+    t.index ["customer_id", "type"], name: "index_payment_provider_customers_on_customer_id_and_type", unique: true, where: "(deleted_at IS NULL)"
     t.index ["payment_provider_id"], name: "index_payment_provider_customers_on_payment_provider_id"
     t.index ["provider_customer_id"], name: "index_payment_provider_customers_on_provider_customer_id"
   end
@@ -795,23 +1081,50 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.datetime "updated_at", null: false
     t.string "code", null: false
     t.string "name", null: false
-    t.index ["code", "organization_id"], name: "index_payment_providers_on_code_and_organization_id", unique: true
+    t.datetime "deleted_at"
+    t.index ["code", "organization_id"], name: "index_payment_providers_on_code_and_organization_id", unique: true, where: "(deleted_at IS NULL)"
     t.index ["organization_id"], name: "index_payment_providers_on_organization_id"
   end
 
+  create_table "payment_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "customer_id", null: false
+    t.bigint "amount_cents", default: 0, null: false
+    t.string "amount_currency", null: false
+    t.string "email"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "organization_id", null: false
+    t.integer "payment_status", default: 0, null: false
+    t.integer "payment_attempts", default: 0, null: false
+    t.boolean "ready_for_payment_processing", default: true, null: false
+    t.uuid "dunning_campaign_id"
+    t.index ["customer_id"], name: "index_payment_requests_on_customer_id"
+    t.index ["dunning_campaign_id"], name: "index_payment_requests_on_dunning_campaign_id"
+    t.index ["organization_id"], name: "index_payment_requests_on_organization_id"
+  end
+
   create_table "payments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "invoice_id", null: false
+    t.uuid "invoice_id"
     t.uuid "payment_provider_id"
     t.uuid "payment_provider_customer_id"
     t.bigint "amount_cents", null: false
     t.string "amount_currency", null: false
-    t.string "provider_payment_id", null: false
+    t.string "provider_payment_id"
     t.string "status", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "payable_type", default: "Invoice", null: false
+    t.uuid "payable_id"
+    t.jsonb "provider_payment_data", default: {}
+    t.enum "payable_payment_status", enum_type: "payment_payable_payment_status"
+    t.enum "payment_type", default: "provider", null: false, enum_type: "payment_type"
+    t.string "reference"
     t.index ["invoice_id"], name: "index_payments_on_invoice_id"
+    t.index ["payable_id", "payable_type"], name: "index_payments_on_payable_id_and_payable_type", unique: true, where: "(payable_payment_status = ANY (ARRAY['pending'::payment_payable_payment_status, 'processing'::payment_payable_payment_status]))"
+    t.index ["payable_type", "payable_id"], name: "index_payments_on_payable_type_and_payable_id"
     t.index ["payment_provider_customer_id"], name: "index_payments_on_payment_provider_customer_id"
     t.index ["payment_provider_id"], name: "index_payments_on_payment_provider_id"
+    t.index ["payment_type"], name: "index_payments_on_payment_type"
   end
 
   create_table "plans", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -873,13 +1186,19 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
 
   create_table "recurring_transaction_rules", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "wallet_id", null: false
-    t.integer "rule_type", default: 0, null: false
+    t.integer "trigger", default: 0, null: false
     t.decimal "paid_credits", precision: 30, scale: 5, default: "0.0", null: false
     t.decimal "granted_credits", precision: 30, scale: 5, default: "0.0", null: false
     t.decimal "threshold_credits", precision: 30, scale: 5, default: "0.0"
     t.integer "interval", default: 0
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "method", default: 0, null: false
+    t.decimal "target_ongoing_balance", precision: 30, scale: 5
+    t.datetime "started_at"
+    t.boolean "invoice_requires_successful_payment", default: false, null: false
+    t.jsonb "transaction_metadata", default: []
+    t.index ["started_at"], name: "index_recurring_transaction_rules_on_started_at"
     t.index ["wallet_id"], name: "index_recurring_transaction_rules_on_wallet_id"
   end
 
@@ -919,6 +1238,7 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.index ["customer_id"], name: "index_subscriptions_on_customer_id"
     t.index ["external_id"], name: "index_subscriptions_on_external_id"
     t.index ["plan_id"], name: "index_subscriptions_on_plan_id"
+    t.index ["previous_subscription_id", "status"], name: "index_subscriptions_on_previous_subscription_id_and_status"
     t.index ["started_at", "ending_at"], name: "index_subscriptions_on_started_at_and_ending_at"
     t.index ["started_at"], name: "index_subscriptions_on_started_at"
     t.index ["status"], name: "index_subscriptions_on_status"
@@ -938,6 +1258,19 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.index ["organization_id"], name: "index_taxes_on_organization_id"
   end
 
+  create_table "usage_thresholds", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "plan_id", null: false
+    t.string "threshold_display_name"
+    t.bigint "amount_cents", null: false
+    t.boolean "recurring", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "deleted_at"
+    t.index ["amount_cents", "plan_id", "recurring"], name: "idx_on_amount_cents_plan_id_recurring_888044d66b", unique: true, where: "(deleted_at IS NULL)"
+    t.index ["plan_id", "recurring"], name: "index_usage_thresholds_on_plan_id_and_recurring", unique: true, where: "((recurring IS TRUE) AND (deleted_at IS NULL))"
+    t.index ["plan_id"], name: "index_usage_thresholds_on_plan_id"
+  end
+
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "email"
     t.string "password_digest"
@@ -953,6 +1286,7 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.jsonb "object"
     t.jsonb "object_changes"
     t.datetime "created_at"
+    t.string "lago_version"
     t.index ["item_type", "item_id"], name: "index_versions_on_item_type_and_item_id"
   end
 
@@ -968,6 +1302,10 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.uuid "invoice_id"
     t.integer "source", default: 0, null: false
     t.integer "transaction_status", default: 0, null: false
+    t.boolean "invoice_requires_successful_payment", default: false, null: false
+    t.jsonb "metadata", default: []
+    t.uuid "credit_note_id"
+    t.index ["credit_note_id"], name: "index_wallet_transactions_on_credit_note_id"
     t.index ["invoice_id"], name: "index_wallet_transactions_on_invoice_id"
     t.index ["wallet_id"], name: "index_wallet_transactions_on_wallet_id"
   end
@@ -994,7 +1332,11 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
     t.decimal "credits_ongoing_balance", precision: 30, scale: 5, default: "0.0", null: false
     t.decimal "credits_ongoing_usage_balance", precision: 30, scale: 5, default: "0.0", null: false
     t.boolean "depleted_ongoing_balance", default: false, null: false
+    t.boolean "invoice_requires_successful_payment", default: false, null: false
+    t.integer "lock_version", default: 0, null: false
+    t.boolean "ready_to_be_refreshed", default: false, null: false
     t.index ["customer_id"], name: "index_wallets_on_customer_id"
+    t.index ["ready_to_be_refreshed"], name: "index_wallets_on_ready_to_be_refreshed", where: "ready_to_be_refreshed"
   end
 
   create_table "webhook_endpoints", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1034,8 +1376,12 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
   add_foreign_key "adjusted_fees", "groups"
   add_foreign_key "adjusted_fees", "invoices"
   add_foreign_key "adjusted_fees", "subscriptions"
+  add_foreign_key "api_keys", "organizations"
   add_foreign_key "applied_add_ons", "add_ons"
   add_foreign_key "applied_add_ons", "customers"
+  add_foreign_key "applied_invoice_custom_sections", "invoices"
+  add_foreign_key "applied_usage_thresholds", "invoices"
+  add_foreign_key "applied_usage_thresholds", "usage_thresholds"
   add_foreign_key "billable_metric_filters", "billable_metrics"
   add_foreign_key "billable_metrics", "organizations"
   add_foreign_key "cached_aggregations", "groups"
@@ -1043,6 +1389,7 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
   add_foreign_key "charge_filter_values", "charge_filters"
   add_foreign_key "charge_filters", "charges"
   add_foreign_key "charges", "billable_metrics"
+  add_foreign_key "charges", "charges", column: "parent_id"
   add_foreign_key "charges", "plans"
   add_foreign_key "charges_taxes", "charges"
   add_foreign_key "charges_taxes", "taxes"
@@ -1061,16 +1408,28 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
   add_foreign_key "credits", "applied_coupons"
   add_foreign_key "credits", "credit_notes"
   add_foreign_key "credits", "invoices"
+  add_foreign_key "credits", "invoices", column: "progressive_billing_invoice_id"
   add_foreign_key "customer_metadata", "customers"
+  add_foreign_key "customers", "dunning_campaigns", column: "applied_dunning_campaign_id"
   add_foreign_key "customers", "organizations"
   add_foreign_key "customers_taxes", "customers"
   add_foreign_key "customers_taxes", "taxes"
+  add_foreign_key "daily_usages", "customers"
+  add_foreign_key "daily_usages", "organizations"
+  add_foreign_key "daily_usages", "subscriptions"
+  add_foreign_key "data_export_parts", "data_exports"
+  add_foreign_key "data_exports", "memberships"
+  add_foreign_key "data_exports", "organizations"
+  add_foreign_key "dunning_campaign_thresholds", "dunning_campaigns"
+  add_foreign_key "dunning_campaigns", "organizations"
+  add_foreign_key "error_details", "organizations"
   add_foreign_key "fees", "add_ons"
   add_foreign_key "fees", "applied_add_ons"
   add_foreign_key "fees", "charges"
   add_foreign_key "fees", "fees", column: "true_up_parent_fee_id"
   add_foreign_key "fees", "groups"
   add_foreign_key "fees", "invoices"
+  add_foreign_key "fees", "organizations"
   add_foreign_key "fees", "subscriptions"
   add_foreign_key "fees_taxes", "fees"
   add_foreign_key "fees_taxes", "taxes"
@@ -1078,27 +1437,40 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
   add_foreign_key "group_properties", "groups", on_delete: :cascade
   add_foreign_key "groups", "billable_metrics", on_delete: :cascade
   add_foreign_key "groups", "groups", column: "parent_group_id"
+  add_foreign_key "inbound_webhooks", "organizations"
   add_foreign_key "integration_collection_mappings", "integrations"
   add_foreign_key "integration_customers", "customers"
   add_foreign_key "integration_customers", "integrations"
   add_foreign_key "integration_items", "integrations"
   add_foreign_key "integration_mappings", "integrations"
+  add_foreign_key "integration_resources", "integrations"
   add_foreign_key "integrations", "organizations"
   add_foreign_key "invites", "memberships"
   add_foreign_key "invites", "organizations"
+  add_foreign_key "invoice_custom_section_selections", "customers"
+  add_foreign_key "invoice_custom_section_selections", "invoice_custom_sections"
+  add_foreign_key "invoice_custom_section_selections", "organizations"
+  add_foreign_key "invoice_custom_sections", "organizations"
   add_foreign_key "invoice_metadata", "invoices"
   add_foreign_key "invoice_subscriptions", "invoices"
   add_foreign_key "invoice_subscriptions", "subscriptions"
   add_foreign_key "invoices", "customers"
   add_foreign_key "invoices", "organizations"
+  add_foreign_key "invoices_payment_requests", "invoices"
+  add_foreign_key "invoices_payment_requests", "payment_requests"
   add_foreign_key "invoices_taxes", "invoices"
   add_foreign_key "invoices_taxes", "taxes"
+  add_foreign_key "lifetime_usages", "organizations"
+  add_foreign_key "lifetime_usages", "subscriptions"
   add_foreign_key "memberships", "organizations"
   add_foreign_key "memberships", "users"
   add_foreign_key "password_resets", "users"
   add_foreign_key "payment_provider_customers", "customers"
   add_foreign_key "payment_provider_customers", "payment_providers"
   add_foreign_key "payment_providers", "organizations"
+  add_foreign_key "payment_requests", "customers"
+  add_foreign_key "payment_requests", "dunning_campaigns"
+  add_foreign_key "payment_requests", "organizations"
   add_foreign_key "payments", "invoices"
   add_foreign_key "payments", "payment_providers"
   add_foreign_key "plans", "organizations"
@@ -1115,6 +1487,8 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
   add_foreign_key "subscriptions", "customers"
   add_foreign_key "subscriptions", "plans"
   add_foreign_key "taxes", "organizations"
+  add_foreign_key "usage_thresholds", "plans"
+  add_foreign_key "wallet_transactions", "credit_notes"
   add_foreign_key "wallet_transactions", "invoices"
   add_foreign_key "wallet_transactions", "wallets"
   add_foreign_key "wallets", "customers"
@@ -1122,20 +1496,7 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
   add_foreign_key "webhooks", "webhook_endpoints"
 
   create_view "last_hour_events_mv", materialized: true, sql_definition: <<-SQL
-      WITH billable_metric_groups AS (
-           SELECT billable_metrics_1.organization_id AS bm_organization_id,
-              billable_metrics_1.id AS bm_id,
-              billable_metrics_1.code AS bm_code,
-              count(parent_groups.id) AS parent_group_count,
-              array_agg(parent_groups.key) AS parent_group_keys,
-              count(child_groups.id) AS child_group_count,
-              array_agg(child_groups.key) AS child_group_keys
-             FROM ((billable_metrics billable_metrics_1
-               LEFT JOIN groups parent_groups ON (((parent_groups.billable_metric_id = billable_metrics_1.id) AND (parent_groups.parent_group_id IS NULL) AND (parent_groups.deleted_at IS NULL))))
-               LEFT JOIN groups child_groups ON (((child_groups.billable_metric_id = billable_metrics_1.id) AND (child_groups.parent_group_id IS NOT NULL) AND (child_groups.deleted_at IS NULL))))
-            WHERE (billable_metrics_1.deleted_at IS NULL)
-            GROUP BY billable_metrics_1.id, billable_metrics_1.code
-          ), billable_metric_filters AS (
+      WITH billable_metric_filters AS (
            SELECT billable_metrics_1.organization_id AS bm_organization_id,
               billable_metrics_1.id AS bm_id,
               billable_metrics_1.code AS bm_code,
@@ -1153,18 +1514,37 @@ ActiveRecord::Schema[7.0].define(version: 2024_05_02_095122) do
       (billable_metrics.aggregation_type = ANY (ARRAY[1, 2, 5, 6])) AS numeric_field_mandatory,
       (events.properties ->> (billable_metrics.field_name)::text) AS field_value,
       ((events.properties ->> (billable_metrics.field_name)::text) ~ '^-?\\d+(\\.\\d+)?$'::text) AS is_numeric_field_value,
-      (COALESCE(billable_metric_groups.parent_group_count, (0)::bigint) > 0) AS parent_group_mandatory,
-      (events.properties ?| (billable_metric_groups.parent_group_keys)::text[]) AS has_parent_group_key,
-      (COALESCE(billable_metric_groups.child_group_count, (0)::bigint) > 0) AS child_group_mandatory,
-      (events.properties ?| (billable_metric_groups.child_group_keys)::text[]) AS has_child_group_key,
       (events.properties ? (billable_metric_filters.filter_key)::text) AS has_filter_keys,
       ((events.properties ->> (billable_metric_filters.filter_key)::text) = ANY ((billable_metric_filters.filter_values)::text[])) AS has_valid_filter_values
-     FROM (((events
+     FROM ((events
        LEFT JOIN billable_metrics ON ((((billable_metrics.code)::text = (events.code)::text) AND (events.organization_id = billable_metrics.organization_id))))
-       LEFT JOIN billable_metric_groups ON ((billable_metrics.id = billable_metric_groups.bm_id)))
        LEFT JOIN billable_metric_filters ON ((billable_metrics.id = billable_metric_filters.bm_id)))
     WHERE ((events.deleted_at IS NULL) AND (events.created_at >= (date_trunc('hour'::text, now()) - 'PT1H'::interval)) AND (events.created_at < date_trunc('hour'::text, now())) AND (billable_metrics.deleted_at IS NULL));
   SQL
-  add_index "last_hour_events_mv", ["organization_id"], name: "index_last_hour_events_mv_on_organization_id"
-
+  create_view "billable_metrics_grouped_charges", sql_definition: <<-SQL
+      SELECT billable_metrics.organization_id,
+      billable_metrics.code,
+      billable_metrics.aggregation_type,
+      billable_metrics.field_name,
+      charges.plan_id,
+      charges.id AS charge_id,
+      charges.pay_in_advance,
+          CASE
+              WHEN (charges.charge_model = 0) THEN (charges.properties -> 'grouped_by'::text)
+              ELSE NULL::jsonb
+          END AS grouped_by,
+      charge_filters.id AS charge_filter_id,
+      json_object_agg(billable_metric_filters.key, COALESCE(charge_filter_values."values", '{}'::character varying[]) ORDER BY billable_metric_filters.key) FILTER (WHERE (billable_metric_filters.key IS NOT NULL)) AS filters,
+          CASE
+              WHEN (charges.charge_model = 0) THEN (charge_filters.properties -> 'grouped_by'::text)
+              ELSE NULL::jsonb
+          END AS filters_grouped_by
+     FROM ((((billable_metrics
+       JOIN charges ON ((charges.billable_metric_id = billable_metrics.id)))
+       LEFT JOIN charge_filters ON ((charge_filters.charge_id = charges.id)))
+       LEFT JOIN charge_filter_values ON ((charge_filter_values.charge_filter_id = charge_filters.id)))
+       LEFT JOIN billable_metric_filters ON ((charge_filter_values.billable_metric_filter_id = billable_metric_filters.id)))
+    WHERE ((billable_metrics.deleted_at IS NULL) AND (charges.deleted_at IS NULL) AND (charge_filters.deleted_at IS NULL) AND (charge_filter_values.deleted_at IS NULL) AND (billable_metric_filters.deleted_at IS NULL))
+    GROUP BY billable_metrics.organization_id, billable_metrics.code, billable_metrics.aggregation_type, billable_metrics.field_name, charges.plan_id, charges.id, charge_filters.id;
+  SQL
 end

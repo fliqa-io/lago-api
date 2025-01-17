@@ -2,8 +2,7 @@
 
 Rails.application.routes.draw do
   mount Sidekiq::Web, at: '/sidekiq' if defined? Sidekiq::Web
-  mount Karafka::Web::App, at: '/karafka' if defined? Karafka::Web::App
-
+  mount Karafka::Web::App, at: '/karafka' if ENV['KARAFKA_WEB']
   mount GraphiQL::Rails::Engine, at: '/graphiql', graphql_path: '/graphql' if Rails.env.development?
 
   post '/graphql', to: 'graphql#execute'
@@ -18,6 +17,7 @@ Rails.application.routes.draw do
         get :invoiced_usage, to: 'invoiced_usages#index', as: :invoiced_usage
         get :invoice_collection, to: 'invoice_collections#index', as: :invoice_collection
         get :mrr, to: 'mrrs#index', as: :mrr
+        get :overdue_balance, to: 'overdue_balances#index', as: :overdue_balance
       end
 
       resources :customers, param: :external_id, only: %i[create index show destroy] do
@@ -33,35 +33,41 @@ Rails.application.routes.draw do
         end
       end
 
-      resources :subscriptions, only: %i[create update show index], param: :external_id
+      resources :subscriptions, only: %i[create update show index], param: :external_id do
+        resource :lifetime_usage, only: %i[show update]
+      end
       delete '/subscriptions/:external_id', to: 'subscriptions#terminate', as: :terminate
 
-      resources :add_ons, param: :code
-      resources :billable_metrics, param: :code
-      get '/billable_metrics/:code/groups', to: 'billable_metrics/groups#index', as: 'billable_metric_groups'
+      resources :add_ons, param: :code, code: /.*/
+      resources :billable_metrics, param: :code, code: /.*/ do
+        post :evaluate_expression, on: :collection
+      end
 
-      resources :coupons, param: :code
+      resources :coupons, param: :code, code: /.*/
       resources :credit_notes, only: %i[create update show index] do
         post :download, on: :member
         put :void, on: :member
         post :estimate, on: :collection
       end
-      resources :events, only: %i[create show] do
+      resources :events, only: %i[create show index] do
         post :estimate_fees, on: :collection
       end
       resources :applied_coupons, only: %i[create index]
-      resources :fees, only: %i[show update index]
+      resources :fees, only: %i[show update index destroy]
       resources :invoices, only: %i[create update show index] do
         post :download, on: :member
         post :void, on: :member
         post :lose_dispute, on: :member
+        post :retry, on: :member
         post :retry_payment, on: :member
         post :payment_url, on: :member
         put :refresh, on: :member
         put :finalize, on: :member
+        put :sync_salesforce_id, on: :member
       end
-      resources :plans, param: :code
-      resources :taxes, param: :code
+      resources :payment_requests, only: %i[create index]
+      resources :plans, param: :code, code: /.*/
+      resources :taxes, param: :code, code: /.*/
       resources :wallet_transactions, only: :create
       get '/wallets/:id/wallet_transactions', to: 'wallet_transactions#index'
       resources :wallets, only: %i[create update show index]

@@ -11,7 +11,7 @@ RSpec.describe UsersService, type: :service do
       result = user_service.register('email', 'password', 'organization_name')
 
       expect(SegmentIdentifyJob).to have_received(:perform_later).with(
-        membership_id: "membership/#{result.membership.id}",
+        membership_id: "membership/#{result.membership.id}"
       )
     end
 
@@ -24,8 +24,8 @@ RSpec.describe UsersService, type: :service do
         event: 'organization_registered',
         properties: {
           organization_name: result.organization.name,
-          organization_id: result.organization.id,
-        },
+          organization_id: result.organization.id
+        }
       )
     end
 
@@ -33,12 +33,11 @@ RSpec.describe UsersService, type: :service do
       result = user_service.register('email', 'password', 'organization_name')
       expect(result.user).to be_present
       expect(result.membership).to be_present
-      expect(result.organization).to be_present
       expect(result.token).to be_present
 
-      org = Organization.find(result.organization.id)
-      expect(org.document_number_prefix).to eq("#{org.name.first(3).upcase}-#{org.id.last(4).upcase}")
-      expect(org.document_numbering).to eq('per_organization')
+      expect(result.organization)
+        .to be_present
+        .and have_attributes(name: 'organization_name', document_numbering: 'per_organization')
     end
 
     context 'when user already exists' do
@@ -58,11 +57,11 @@ RSpec.describe UsersService, type: :service do
 
     context 'when signup is disabled' do
       before do
-        ENV['LAGO_SIGNUP_DISABLED'] = 'true'
+        ENV['LAGO_DISABLE_SIGNUP'] = 'true'
       end
 
       after do
-        ENV['LAGO_SIGNUP_DISABLED'] = nil
+        ENV['LAGO_DISABLE_SIGNUP'] = nil
       end
 
       it 'returns a not allowed error' do
@@ -70,7 +69,7 @@ RSpec.describe UsersService, type: :service do
 
         aggregate_failures do
           expect(result).not_to be_success
-          expect(result.error.message).to eq('signup disabled')
+          expect(result.error.message).to eq('signup_disabled')
         end
       end
     end
@@ -117,7 +116,7 @@ RSpec.describe UsersService, type: :service do
       result = user_service.login(membership.user.email, membership.user.password)
 
       expect(SegmentIdentifyJob).to have_received(:perform_later).with(
-        membership_id: "membership/#{result.user.memberships.first.id}",
+        membership_id: "membership/#{result.user.memberships.first.id}"
       )
     end
   end

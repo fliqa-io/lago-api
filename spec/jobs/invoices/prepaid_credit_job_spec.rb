@@ -16,7 +16,7 @@ RSpec.describe Invoices::PrepaidCreditJob, type: :job do
       fee_type: 'credit',
       invoiceable_type: 'WalletTransaction',
       invoiceable_id: wallet_transaction.id,
-      invoice:,
+      invoice:
     )
   end
 
@@ -37,5 +37,29 @@ RSpec.describe Invoices::PrepaidCreditJob, type: :job do
     described_class.perform_now(invoice)
 
     expect(wallet_transaction.reload.status).to eq('settled')
+  end
+
+  it 'finalize the invoice' do
+    allow(Invoices::FinalizeOpenCreditService).to receive(:call)
+    described_class.perform_now(invoice)
+    expect(Invoices::FinalizeOpenCreditService).to have_received(:call).with(invoice:)
+  end
+
+  it 'does not retry the job' do
+    expect {
+      described_class.perform_now(invoice)
+    }.not_to have_enqueued_job(described_class)
+  end
+
+  context 'when there is race condition error' do
+    before do
+      allow(Wallets::ApplyPaidCreditsService).to receive(:call).and_raise(ActiveRecord::StaleObjectError.new)
+    end
+
+    it 'retries the job' do
+      expect {
+        described_class.perform_now(invoice)
+      }.to have_enqueued_job(described_class)
+    end
   end
 end

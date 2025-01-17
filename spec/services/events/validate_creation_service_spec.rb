@@ -9,7 +9,7 @@ RSpec.describe Events::ValidateCreationService, type: :service do
       params:,
       result:,
       customer:,
-      subscriptions: [subscription],
+      subscriptions: [subscription]
     )
   end
 
@@ -66,7 +66,7 @@ RSpec.describe Events::ValidateCreationService, type: :service do
           params:,
           result:,
           customer: nil,
-          subscriptions: [subscription],
+          subscriptions: [subscription]
         )
       end
 
@@ -85,7 +85,7 @@ RSpec.describe Events::ValidateCreationService, type: :service do
           params:,
           result:,
           customer:,
-          subscriptions: [subscription, subscription2],
+          subscriptions: [subscription, subscription2]
         )
       end
 
@@ -106,7 +106,7 @@ RSpec.describe Events::ValidateCreationService, type: :service do
           code: billable_metric.code,
           external_subscription_id: SecureRandom.uuid,
           external_customer_id: customer.external_id,
-          transaction_id:,
+          transaction_id:
         }
       end
 
@@ -118,7 +118,7 @@ RSpec.describe Events::ValidateCreationService, type: :service do
           params:,
           result:,
           customer:,
-          subscriptions: [subscription, subscription2],
+          subscriptions: [subscription, subscription2]
         )
       end
 
@@ -143,7 +143,7 @@ RSpec.describe Events::ValidateCreationService, type: :service do
           code: billable_metric.code,
           external_subscription_id: external_id,
           external_customer_id: customer.external_id,
-          transaction_id:,
+          transaction_id:
         }
       end
 
@@ -165,7 +165,7 @@ RSpec.describe Events::ValidateCreationService, type: :service do
           transaction_id:,
           external_subscription_id: subscription.external_id,
           subscription_id: subscription.id,
-          organization_id: organization.id,
+          organization_id: organization.id
         )
       end
 
@@ -202,9 +202,9 @@ RSpec.describe Events::ValidateCreationService, type: :service do
           code: billable_metric.code,
           external_customer_id: customer.external_id,
           properties: {
-            item_id: 'test',
+            item_id: 'test'
           },
-          transaction_id:,
+          transaction_id:
         }
       end
 
@@ -225,9 +225,9 @@ RSpec.describe Events::ValidateCreationService, type: :service do
             code: billable_metric.code,
             external_customer_id: customer.external_id,
             properties: {
-              invalid_key: 'test',
+              invalid_key: 'test'
             },
-            transaction_id:,
+            transaction_id:
           }
         end
 
@@ -243,7 +243,7 @@ RSpec.describe Events::ValidateCreationService, type: :service do
           {
             code: billable_metric.code,
             external_customer_id: customer.external_id,
-            transaction_id:,
+            transaction_id:
           }
         end
 
@@ -252,6 +252,32 @@ RSpec.describe Events::ValidateCreationService, type: :service do
 
           expect(result).to be_success
         end
+      end
+    end
+
+    context 'when timestamp is in a wrong format' do
+      let(:params) do
+        {external_customer_id: customer.external_id, code: billable_metric.code, transaction_id:, timestamp: '2025-01-01'}
+      end
+
+      it 'returns a timestamp_is_not_valid error' do
+        validate_event
+
+        expect(result).not_to be_success
+        expect(result.error).to be_a(BaseService::ValidationFailure)
+        expect(result.error.messages.keys).to include(:timestamp)
+        expect(result.error.messages[:timestamp]).to include('invalid_format')
+      end
+    end
+
+    context 'when timestamp is valid' do
+      let(:params) do
+        {external_customer_id: customer.external_id, code: billable_metric.code, transaction_id:, timestamp: Time.current.to_i + 0.11}
+      end
+
+      it 'does not raise any errors' do
+        expect(validate_event).to be_nil
+        expect(result).to be_success
       end
     end
   end

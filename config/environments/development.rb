@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require 'active_support/core_ext/integer/time'
-require 'sprockets/railtie'
+require "active_support/core_ext/integer/time"
 
 Rails.application.configure do
   config.after_initialize do
@@ -14,20 +13,23 @@ Rails.application.configure do
   config.middleware.use(ActionDispatch::Session::CookieStore, key: '_lago_dev')
   config.middleware.use(Rack::MethodOverride)
 
-  config.cache_classes = false
+  config.eager_load_paths += %W[
+    #{config.root}/dev
+  ]
+
+  config.enable_reloading = true
   config.eager_load = false
   config.consider_all_requests_local = true
   config.server_timing = true
 
-  if Rails.root.join('tmp/caching-dev.txt').exist?
-    config.cache_store = :memory_store
+  config.cache_store = :redis_cache_store, {url: ENV['LAGO_REDIS_CACHE_URL'], db: 3}
+
+  if Rails.root.join("tmp/caching-dev.txt").exist?
     config.public_file_server.headers = {
-      'Cache-Control' => "public, max-age=#{2.days.to_i}",
+      "Cache-Control" => "public, max-age=#{2.days.to_i}"
     }
   else
     config.action_controller.perform_caching = false
-
-    config.cache_store = :null_store
   end
 
   config.active_storage.service = if ENV['LAGO_USE_AWS_S3'].present? && ENV['LAGO_USE_AWS_S3'] == 'true'
@@ -50,9 +52,10 @@ Rails.application.configure do
   logger.formatter = config.log_formatter
   config.logger = ActiveSupport::TaggedLogging.new(logger)
 
+  config.action_controller.raise_on_missing_callback_actions = true
+
   config.hosts << 'api.lago.dev'
   config.hosts << 'api'
-  config.hosts << 'lago.ngrok.dev'
 
   config.license_url = 'http://license:3000'
 
@@ -61,8 +64,9 @@ Rails.application.configure do
   config.action_mailer.delivery_method = :smtp
   config.action_mailer.smtp_settings = {
     address: 'mailhog',
-    port: 1025,
+    port: 1025
   }
+  config.action_mailer.preview_paths << Rails.root.join("spec/mailers/previews").to_s
 
   Dotenv.load
 end

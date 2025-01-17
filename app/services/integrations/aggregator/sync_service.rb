@@ -4,13 +4,13 @@ module Integrations
   module Aggregator
     class SyncService < BaseService
       def action_path
-        'sync/start'
+        'sync/trigger'
       end
 
       def call
         payload = {
-          provider_config_key: provider,
-          syncs: sync_list,
+          provider_config_key: provider_key,
+          syncs: sync_list
         }
 
         response = http_client.post_with_response(payload, headers)
@@ -26,16 +26,18 @@ module Integrations
         list = case integration.type
         when 'Integrations::NetsuiteIntegration'
           {
-            accounts: 'netsuite-accounts-sync',
-            items: 'netsuite-items-sync',
-            subsidiaries: 'netsuite-subsidiaries-sync',
-            contacts: 'netsuite-contacts-sync',
-            tax_items: 'netsuite-tax-items-sync',
+            subsidiaries: 'netsuite-subsidiaries-sync'
+          }
+        when 'Integrations::XeroIntegration'
+          {
+            accounts: 'xero-accounts-sync',
+            items: 'xero-items-sync',
+            contacts: 'xero-contacts-sync'
           }
         end
 
         return [list[:items]] if options[:only_items]
-        return [list[:tax_items]] if options[:only_tax_items]
+        return [list[:accounts]] if options[:only_accounts]
 
         list.values
       end

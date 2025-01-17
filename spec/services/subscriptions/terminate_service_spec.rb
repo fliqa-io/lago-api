@@ -5,7 +5,7 @@ require 'rails_helper'
 RSpec.describe Subscriptions::TerminateService do
   subject(:terminate_service) { described_class.new(subscription:) }
 
-  describe '.terminate' do
+  describe '#call' do
     let(:subscription) { create(:subscription) }
 
     it 'terminates a subscription' do
@@ -18,10 +18,28 @@ RSpec.describe Subscriptions::TerminateService do
       end
     end
 
-    it 'enqueues a BillSubscriptionJob' do
-      expect do
+    context 'when the subscription should sync with Hubspot' do
+      before do
+        allow(subscription).to receive(:should_sync_hubspot_subscription?).and_return(true)
+        allow(Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob).to receive(:perform_later)
+      end
+
+      it 'calls the hubspot update job' do
         terminate_service.call
-      end.to have_enqueued_job(BillSubscriptionJob)
+        expect(Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob)
+          .to have_received(:perform_later).with(subscription:)
+      end
+    end
+
+    it 'enqueues a BillSubscriptionJob' do
+      expect { terminate_service.call }.to have_enqueued_job(BillSubscriptionJob)
+    end
+
+    it "enqueues a BillNonInvoiceableFeesJob" do
+      freeze_time do
+        expect { terminate_service.call }.to have_enqueued_job(BillNonInvoiceableFeesJob)
+          .with([subscription], Time.zone.now)
+      end
     end
 
     it 'enqueues a SendWebhookJob' do
@@ -32,6 +50,17 @@ RSpec.describe Subscriptions::TerminateService do
 
     context 'when subscription is starting in the future' do
       let(:subscription) { create(:subscription, :pending) }
+
+      it 'cancels a subscription' do
+        result = terminate_service.call
+
+        aggregate_failures do
+          expect(result.subscription).to be_present
+          expect(result.subscription).to be_canceled
+          expect(result.subscription.canceled_at).to be_present
+          expect(result.subscription.terminated_at).to be_nil
+        end
+      end
 
       it 'does not enqueue a BillSubscriptionJob' do
         expect do
@@ -70,7 +99,7 @@ RSpec.describe Subscriptions::TerminateService do
         create(
           :subscription,
           previous_subscription: subscription,
-          status: :pending,
+          status: :pending
         )
       end
 
@@ -92,7 +121,7 @@ RSpec.describe Subscriptions::TerminateService do
         Subscriptions::DatesService.new_instance(
           subscription,
           Time.current.beginning_of_month,
-          current_usage: false,
+          current_usage: false
         )
       end
       let(:invoice_subscription) do
@@ -104,7 +133,7 @@ RSpec.describe Subscriptions::TerminateService do
           from_datetime: date_service.from_datetime,
           to_datetime: date_service.to_datetime,
           charges_from_datetime: date_service.charges_from_datetime,
-          charges_to_datetime: date_service.charges_to_datetime,
+          charges_to_datetime: date_service.charges_to_datetime
         )
       end
       let(:invoice) do
@@ -115,7 +144,7 @@ RSpec.describe Subscriptions::TerminateService do
           sub_total_excluding_taxes_amount_cents: 100,
           fees_amount_cents: 100,
           taxes_amount_cents: 20,
-          total_amount_cents: 120,
+          total_amount_cents: 120
         )
       end
 
@@ -128,7 +157,7 @@ RSpec.describe Subscriptions::TerminateService do
           taxes_amount_cents: 20,
           invoiceable_type: 'Subscription',
           invoiceable_id: subscription.id,
-          taxes_rate: 20,
+          taxes_rate: 20
         )
       end
 
@@ -137,7 +166,7 @@ RSpec.describe Subscriptions::TerminateService do
         subscription.update!(
           billing_time: :anniversary,
           started_at: creation_time,
-          subscription_at: creation_time,
+          subscription_at: creation_time
         )
 
         invoice_subscription
@@ -202,7 +231,7 @@ RSpec.describe Subscriptions::TerminateService do
       it 'enqueues a job to bill the existing subscription' do
         expect do
           terminate_service.terminate_and_start_next(timestamp:)
-        end.to have_enqueued_job(BillSubscriptionJob)
+        end.to have_enqueued_job(BillSubscriptionJob).and have_enqueued_job(BillNonInvoiceableFeesJob)
       end
     end
 
@@ -213,7 +242,7 @@ RSpec.describe Subscriptions::TerminateService do
           :subscription,
           previous_subscription_id: subscription.id,
           plan:,
-          status: :pending,
+          status: :pending
         )
       end
 

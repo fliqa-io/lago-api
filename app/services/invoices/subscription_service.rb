@@ -26,38 +26,70 @@ module Invoices
       create_generating_invoice unless invoice
       result.invoice = invoice
 
-      ActiveRecord::Base.transaction do
-        invoice.status = invoice_status
-        invoice.save!
-
+      fee_result = ActiveRecord::Base.transaction do
+        context = grace_period? ? :draft : :finalize
         fee_result = Invoices::CalculateFeesService.call(
           invoice:,
           recurring:,
+          context:
         )
+        Invoices::ApplyInvoiceCustomSectionsService.call(invoice:)
 
-        fee_result.raise_if_error!
+        set_invoice_generated_status unless invoice.pending?
+        invoice.save!
+
+        # NOTE: We don't want to raise error and corrupt DB commit if there is tax error.
+        #       In that case we want fees to stay attached to the invoice. There is retry action that will enable users
+        #       to finalize invoice
+        fee_result.raise_if_error! unless tax_error?(fee_result)
         invoice.reload
+
+        flag_lifetime_usage_for_refresh
+        customer.flag_wallets_for_refresh if grace_period?
+        fee_result
+      end
+      result.non_invoiceable_fees = fee_result.non_invoiceable_fees
+
+      # non-invoiceable fees are created the first time, regardless of grace period.
+      # Whenever the invoice is refreshed, the fees are not created again. (see `Fees::ChargeService.already_billed?`)
+      # The webhook are sent whenever non-invoiceable fees are found in result.
+      result.non_invoiceable_fees&.each do |fee|
+        SendWebhookJob.perform_later("fee.created", fee)
+      end
+
+      fill_daily_usage
+
+      if tax_error?(fee_result)
+        SendWebhookJob.perform_later("invoice.drafted", invoice) if grace_period?
+
+        return result
       end
 
       if grace_period?
-        SendWebhookJob.perform_later('invoice.drafted', invoice) if should_deliver_webhook?
+        SendWebhookJob.perform_later("invoice.drafted", invoice)
       else
-        SendWebhookJob.perform_later('invoice.created', invoice) if should_deliver_webhook?
-        InvoiceMailer.with(invoice:).finalized.deliver_later if should_deliver_finalized_email?
-        Invoices::Payments::CreateService.new(invoice).call
-        track_invoice_created(invoice)
+        unless invoice.closed? # we dont need to send the webhooks if the invoice was closed ( skip 0 invoice setting )
+          SendWebhookJob.perform_later("invoice.created", invoice)
+          GeneratePdfAndNotifyJob.perform_later(invoice:, email: should_deliver_finalized_email?)
+          Integrations::Aggregator::Invoices::CreateJob.perform_later(invoice:) if invoice.should_sync_invoice?
+          Integrations::Aggregator::Invoices::Hubspot::CreateJob.perform_later(invoice:) if invoice.should_sync_hubspot_invoice?
+          Invoices::Payments::CreateService.call_async(invoice:)
+          Utils::SegmentTrack.invoice_created(invoice)
+        end
       end
 
       result
     rescue ActiveRecord::RecordInvalid => e
       result.record_validation_failure!(record: e.record)
+    rescue ActiveRecord::RecordNotUnique
+      return result if invoicing_reason.to_sym == :subscription_periodic
+
+      raise
     rescue BaseService::ServiceFailure => e
-      raise unless e.code.to_s == 'duplicated_invoices'
+      raise unless e.code.to_s == "duplicated_invoices"
       raise unless invoicing_reason.to_sym == :subscription_periodic
 
       result
-    rescue Sequenced::SequenceError
-      raise
     rescue => e
       result.fail_with_error!(e)
     end
@@ -83,7 +115,7 @@ module Invoices
         invoice_type: :subscription,
         currency:,
         datetime: Time.zone.at(timestamp),
-        skip_charges:,
+        skip_charges:
       ) do |invoice|
         Invoices::CreateInvoiceSubscriptionService
           .call(invoice:, subscriptions:, timestamp:, invoicing_reason:)
@@ -99,29 +131,38 @@ module Invoices
       @grace_period ||= customer.applicable_invoice_grace_period.positive?
     end
 
-    def invoice_status
-      grace_period? ? :draft : :finalized
-    end
+    def set_invoice_generated_status
+      return invoice.status = :draft if grace_period?
 
-    def should_deliver_webhook?
-      customer.organization.webhook_endpoints.any?
+      Invoices::TransitionToFinalStatusService.call(invoice:)
     end
 
     def should_deliver_finalized_email?
       License.premium? &&
-        customer.organization.email_settings.include?('invoice.finalized')
+        customer.organization.email_settings.include?("invoice.finalized")
     end
 
-    def track_invoice_created(invoice)
-      SegmentTrackJob.perform_later(
-        membership_id: CurrentContext.membership,
-        event: 'invoice_created',
-        properties: {
-          organization_id: invoice.organization.id,
-          invoice_id: invoice.id,
-          invoice_type: invoice.invoice_type,
-        },
-      )
+    def flag_lifetime_usage_for_refresh
+      LifetimeUsages::FlagRefreshFromInvoiceService.call(invoice:).raise_if_error!
+    end
+
+    def tax_error?(fee_result)
+      return false if fee_result.success?
+
+      fee_result.error.is_a?(BaseService::UnknownTaxFailure)
+    end
+
+    USAGE_TRACKABLE_REASONS = %i[subscription_periodic subscription_terminating].freeze
+    def fill_daily_usage
+      return unless invoice.organization.premium_integrations.include?("revenue_analytics")
+
+      subscriptions = invoice
+        .invoice_subscriptions
+        .select { |is| USAGE_TRACKABLE_REASONS.include?(is.invoicing_reason.to_sym) }
+        .map(&:subscription)
+      return if subscriptions.blank?
+
+      DailyUsages::FillFromInvoiceJob.perform_later(invoice:, subscriptions: subscriptions)
     end
   end
 end

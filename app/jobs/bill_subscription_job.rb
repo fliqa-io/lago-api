@@ -1,7 +1,15 @@
 # frozen_string_literal: true
 
 class BillSubscriptionJob < ApplicationJob
-  queue_as 'billing'
+  queue_as do
+    if ActiveModel::Type::Boolean.new.cast(ENV['SIDEKIQ_BILLING'])
+      :billing
+    else
+      :default
+    end
+  end
+
+  unique :until_executed, on_conflict: :log, lock_ttl: 12.hours
 
   retry_on Sequenced::SequenceError, ActiveJob::DeserializationError
 
@@ -11,19 +19,25 @@ class BillSubscriptionJob < ApplicationJob
       timestamp:,
       invoicing_reason:,
       invoice:,
-      skip_charges:,
+      skip_charges:
     )
     return if result.success?
 
-    result.raise_if_error! if invoice || result.invoice.nil? || !result.invoice.generating?
+    # If the invoice was passed as an argument, it means the job was already retried (see end of function)
+    if invoice || !result.invoice&.generating?
+      InvoiceError.create_for(invoice: result.invoice, error: result.error)
+      return result.raise_if_error!
+    end
 
-    # NOTE: retry the job with the already created invoice in a previous failed attempt
-    self.class.set(wait: 3.seconds).perform_later(
+    # On billing day, we'll retry the job further in the future because the system is typically under heavy load
+    is_billing_date = invoicing_reason.to_sym == :subscription_periodic
+
+    self.class.set(wait: is_billing_date ? 5.minutes : 3.seconds).perform_later(
       subscriptions,
       timestamp,
       invoicing_reason:,
       invoice: result.invoice,
-      skip_charges:,
+      skip_charges:
     )
   end
 end

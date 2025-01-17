@@ -71,95 +71,42 @@ RSpec.describe BillableMetric, type: :model do
     end
   end
 
-  describe '#selectable_groups' do
-    context 'without active groups' do
-      it 'returns an empty collection' do
-        expect(billable_metric.selectable_groups).to be_empty
+  describe '#validate_expression' do
+    let(:expression) { "" }
+    let(:billable_metric) { build(:max_billable_metric, expression:) }
+
+    it 'does not return an error if expression is blank' do
+      expect(billable_metric).to be_valid
+    end
+
+    context "with valid expression" do
+      let(:expression) { "1 + event.timestamp" }
+
+      it 'does not return an error' do
+        expect(billable_metric).to be_valid
       end
     end
 
-    context 'when groups contain one dimension' do
-      it 'returns all groups' do
-        one = create(:group, billable_metric:, key: 'country', value: 'france')
-        second = create(:group, billable_metric:, key: 'country', value: 'italy')
+    context 'when expression is not valid' do
+      let(:expression) { "1+" }
 
-        expect(billable_metric.selectable_groups).to contain_exactly(one, second)
-      end
-    end
-
-    context 'when groups contain two dimensions' do
-      it 'returns only children groups' do
-        france = create(:group, billable_metric:, key: 'country', value: 'france')
-        italy = create(:group, billable_metric:, key: 'country', value: 'italy')
-        one = create(:group, billable_metric:, key: 'cloud', value: 'aws', parent_group_id: france.id)
-        second = create(:group, billable_metric:, key: 'cloud', value: 'google', parent_group_id: france.id)
-        third = create(:group, billable_metric:, key: 'cloud', value: 'google', parent_group_id: italy.id)
-
-        expect(billable_metric.selectable_groups).to contain_exactly(one, second, third)
-      end
-    end
-
-    context 'when billable metric and group are deleted' do
-      it 'returns all groups' do
-        billable_metric.discard!
-        one = create(:group, :deleted, billable_metric:, key: 'country', value: 'france')
-        second = create(:group, :deleted, billable_metric:, key: 'country', value: 'italy')
-
-        expect(billable_metric.selectable_groups).to contain_exactly(one, second)
+      it 'returns an error for expression' do
+        aggregate_failures do
+          expect(billable_metric).not_to be_valid
+          expect(billable_metric.errors.messages[:expression]).to include('invalid_expression')
+        end
       end
     end
   end
 
-  describe '#active_groups_as_tree' do
-    context 'without active groups' do
-      it 'returns {}' do
-        expect(billable_metric.active_groups_as_tree).to eq({})
-      end
-    end
-
-    context 'when groups contain one dimension' do
-      before do
-        create(:group, billable_metric:, key: 'country', value: 'france')
-        create(:group, billable_metric:, key: 'country', value: 'italy')
+  describe '#payable_in_advance?' do
+    it do
+      described_class::AGGREGATION_TYPES_PAYABLE_IN_ADVANCE.each do |agg|
+        expect(build(:billable_metric, aggregation_type: agg)).to be_payable_in_advance
       end
 
-      it 'returns a tree with one dimension' do
-        expect(billable_metric.active_groups_as_tree).to eq(
-          {
-            key: 'country',
-            values: %w[france italy],
-          },
-        )
-      end
-    end
-
-    context 'when groups contain two dimensions' do
-      before do
-        france = create(:group, billable_metric:, key: 'country', value: 'france')
-        italy = create(:group, billable_metric:, key: 'country', value: 'italy')
-        create(:group, billable_metric:, key: 'cloud', value: 'aws', parent_group_id: france.id)
-        create(:group, billable_metric:, key: 'cloud', value: 'google', parent_group_id: france.id)
-        create(:group, billable_metric:, key: 'cloud', value: 'google', parent_group_id: italy.id)
-      end
-
-      it 'returns a tree with two dimensions' do
-        expect(billable_metric.active_groups_as_tree).to eq(
-          {
-            key: 'country',
-            values: [
-              {
-                name: 'france',
-                key: 'cloud',
-                values: %w[aws google],
-              },
-              {
-                name: 'italy',
-                key: 'cloud',
-                values: %w[google],
-              },
-            ],
-          },
-        )
+      (described_class::AGGREGATION_TYPES.keys - described_class::AGGREGATION_TYPES_PAYABLE_IN_ADVANCE).each do |agg|
+        expect(build(:billable_metric, aggregation_type: agg)).not_to be_payable_in_advance
       end
     end
   end

@@ -12,8 +12,8 @@ module V1
           amount_cents: model.amount_cents,
           total_amount_cents: model.total_amount_cents,
           taxes_amount_cents: model.taxes_amount_cents,
-          lago_invoice_id: nil,
-        }.merge(legacy_values)
+          lago_invoice_id: nil
+        }
 
         payload.merge!(charges_usage) if include?(:charges_usage)
         payload
@@ -23,12 +23,8 @@ module V1
 
       def charges_usage
         {
-          charges_usage: ::V1::Customers::ChargeUsageSerializer.new(model.fees).serialize,
+          charges_usage: ::V1::Customers::ChargeUsageSerializer.new(model.fees).serialize
         }
-      end
-
-      def legacy_values
-        ::V1::Legacy::Customers::UsageSerializer.new(model).serialize
       end
     end
   end

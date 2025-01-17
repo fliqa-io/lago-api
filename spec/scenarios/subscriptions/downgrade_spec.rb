@@ -13,7 +13,7 @@ describe 'Subscription Downgrade Scenario', :scenarios, type: :request, transact
       organization:,
       interval: 'monthly',
       amount_cents: 12_900,
-      pay_in_advance: true,
+      pay_in_advance: true
     )
   end
 
@@ -23,7 +23,7 @@ describe 'Subscription Downgrade Scenario', :scenarios, type: :request, transact
       organization:,
       interval: 'yearly',
       amount_cents: 118_800,
-      pay_in_advance: true,
+      pay_in_advance: true
     )
   end
 
@@ -40,8 +40,8 @@ describe 'Subscription Downgrade Scenario', :scenarios, type: :request, transact
           external_id: customer.external_id,
           plan_code: monthly_plan.code,
           billing_time: 'anniversary',
-          subscription_at: subscription_at.iso8601,
-        },
+          subscription_at: subscription_at.iso8601
+        }
       )
 
       subscription = customer.subscriptions.first
@@ -106,8 +106,8 @@ describe 'Subscription Downgrade Scenario', :scenarios, type: :request, transact
           external_customer_id: customer.external_id,
           external_id: customer.external_id,
           plan_code: yearly_plan.code,
-          billing_time: 'anniversary',
-        },
+          billing_time: 'anniversary'
+        }
       )
 
       expect(subscription.reload).to be_active

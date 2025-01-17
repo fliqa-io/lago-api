@@ -8,13 +8,13 @@ describe 'Adjusted Charge Fees Scenario', :scenarios, type: :request, transactio
   let(:customer) { create(:customer, organization:, invoice_grace_period: 5) }
   let(:subscription_at) { DateTime.new(2023, 7, 19, 12, 12) }
   let(:billable_metric) { create(:billable_metric, organization:, aggregation_type: 'sum_agg', field_name: 'custom') }
-  let(:unit_amount_cents) { nil }
+  let(:unit_precise_amount) { nil }
 
   let(:adjusted_fee_params) do
     {
       invoice_display_name: 'test-name-25',
-      unit_amount_cents:,
-      units: 3,
+      unit_precise_amount:,
+      units: 3
     }
   end
 
@@ -24,7 +24,7 @@ describe 'Adjusted Charge Fees Scenario', :scenarios, type: :request, transactio
       organization:,
       interval: 'monthly',
       amount_cents: 12_900,
-      pay_in_advance: false,
+      pay_in_advance: false
     )
   end
 
@@ -38,7 +38,7 @@ describe 'Adjusted Charge Fees Scenario', :scenarios, type: :request, transactio
           :standard_charge,
           plan: monthly_plan,
           billable_metric:,
-          properties: {amount: '5'},
+          properties: {amount: '5'}
         )
 
         create_subscription(
@@ -47,8 +47,8 @@ describe 'Adjusted Charge Fees Scenario', :scenarios, type: :request, transactio
             external_id: customer.external_id,
             plan_code: monthly_plan.code,
             billing_time: 'anniversary',
-            subscription_at: subscription_at.iso8601,
-          },
+            subscription_at: subscription_at.iso8601
+          }
         )
       end
 
@@ -58,7 +58,7 @@ describe 'Adjusted Charge Fees Scenario', :scenarios, type: :request, transactio
         perform_all_enqueued_jobs
 
         invoice = customer.invoices.order(created_at: :desc).first
-        fee = Fee.charge_kind.where(invoice:).first
+        fee = Fee.charge.where(invoice:).first
 
         expect(invoice.status).to eq('draft')
         expect(invoice.total_amount_cents).to eq(12_900)
@@ -90,7 +90,7 @@ describe 'Adjusted Charge Fees Scenario', :scenarios, type: :request, transactio
   end
 
   context 'with adjusted amount' do
-    let(:unit_amount_cents) { 15_000 }
+    let(:unit_precise_amount) { '150.00' }
 
     it 'creates invoices correctly' do
       # NOTE: Jul 19th: create the subscription
@@ -99,7 +99,7 @@ describe 'Adjusted Charge Fees Scenario', :scenarios, type: :request, transactio
           :standard_charge,
           plan: monthly_plan,
           billable_metric:,
-          properties: {amount: '10'},
+          properties: {amount: '10'}
         )
 
         create_subscription(
@@ -108,8 +108,8 @@ describe 'Adjusted Charge Fees Scenario', :scenarios, type: :request, transactio
             external_id: customer.external_id,
             plan_code: monthly_plan.code,
             billing_time: 'anniversary',
-            subscription_at: subscription_at.iso8601,
-          },
+            subscription_at: subscription_at.iso8601
+          }
         )
       end
 
@@ -119,7 +119,7 @@ describe 'Adjusted Charge Fees Scenario', :scenarios, type: :request, transactio
         perform_all_enqueued_jobs
 
         invoice = customer.invoices.order(created_at: :desc).first
-        fee = Fee.charge_kind.where(invoice:).first
+        fee = Fee.charge.where(invoice:).first
 
         expect(invoice.status).to eq('draft')
         expect(invoice.total_amount_cents).to eq(12_900)

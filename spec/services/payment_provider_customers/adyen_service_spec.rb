@@ -41,7 +41,7 @@ RSpec.describe PaymentProviderCustomers::AdyenService, type: :service do
           .with(
             'customer.checkout_url_generated',
             customer,
-            checkout_url: 'https://test.adyen.link/test',
+            checkout_url: 'https://test.adyen.link/test'
           )
           .on_queue(:webhook)
       end
@@ -71,8 +71,8 @@ RSpec.describe PaymentProviderCustomers::AdyenService, type: :service do
             customer,
             provider_error: {
               message: 'There are no payment methods available for the given parameters.',
-              error_code: 'validation',
-            },
+              error_code: 'validation'
+            }
           ).on_queue(:webhook)
       end
     end
@@ -93,8 +93,29 @@ RSpec.describe PaymentProviderCustomers::AdyenService, type: :service do
             customer,
             provider_error: {
               message: 'error',
-              error_code: nil,
-            },
+              error_code: nil
+            }
+          )
+      end
+    end
+
+    context 'with authentication error' do
+      before do
+        allow(payment_links_api)
+          .to receive(:payment_links).and_raise(Adyen::AuthenticationError.new('error', nil))
+      end
+
+      it 'delivers an error webhook' do
+        expect(adyen_service.create).to be_success
+
+        expect(SendWebhookJob).to have_been_enqueued
+          .with(
+            'customer.payment_provider_error',
+            customer,
+            provider_error: {
+              message: 'error',
+              error_code: 401
+            }
           )
       end
     end
@@ -151,7 +172,7 @@ RSpec.describe PaymentProviderCustomers::AdyenService, type: :service do
           .with(
             'customer.checkout_url_generated',
             customer,
-            checkout_url: 'https://test.adyen.link/test',
+            checkout_url: 'https://test.adyen.link/test'
           )
           .on_queue(:webhook)
       end

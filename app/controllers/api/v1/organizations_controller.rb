@@ -8,8 +8,8 @@ module Api
           json: ::V1::OrganizationSerializer.new(
             current_organization,
             root_name: 'organization',
-            include: %i[taxes],
-          ),
+            include: %i[taxes]
+          )
         )
       end
 
@@ -21,8 +21,8 @@ module Api
             json: ::V1::OrganizationSerializer.new(
               result.organization,
               root_name: 'organization',
-              includes: %i[taxes],
-            ),
+              includes: %i[taxes]
+            )
           )
         else
           render_error_response(result)
@@ -32,16 +32,16 @@ module Api
       def grpc_token
         payload = {
           organization_id: current_organization.id,
-          aud: 'lago-grpc',
+          aud: 'lago-grpc'
         }
         grpc_token = JWT.encode(payload, RsaPrivateKey, 'RS256')
 
         render(
           json: {
             organization: {
-              grpc_token:,
-            },
-          },
+              grpc_token:
+            }
+          }
         )
       end
 
@@ -65,16 +65,18 @@ module Api
           :webhook_url,
           :document_numbering,
           :document_number_prefix,
+          :finalize_zero_amount_invoice,
           email_settings: [],
           billing_configuration: [
             :invoice_footer,
             :invoice_grace_period,
-            :document_locale,
-
-            # NOTE(legacy): vat has been moved to tax model
-            :vat_rate,
-          ],
+            :document_locale
+          ]
         )
+      end
+
+      def resource_name
+        'organization'
       end
     end
   end

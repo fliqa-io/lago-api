@@ -7,7 +7,7 @@ RSpec.describe Subscriptions::ActivateService, type: :service do
 
   let(:timestamp) { Time.current }
 
-  describe '.activate_all_expired' do
+  describe '.activate_all_pending' do
     it 'activates all pending subscriptions with subscription date set to today' do
       create(:subscription)
       create_list(:subscription, 2, :pending, subscription_at: timestamp)
@@ -23,12 +23,21 @@ RSpec.describe Subscriptions::ActivateService, type: :service do
 
     context 'with customer timezone' do
       let(:timestamp) { DateTime.parse('2023-08-24 00:07:00') }
+      let(:customer) { create(:customer, :with_hubspot_integration, timezone: 'America/Bogota') }
       let!(:pending_subscription) do
         create(
           :subscription,
           :pending,
-          {subscription_at: timestamp, customer: create(:customer, timezone: 'America/Bogota')},
+          customer:,
+          subscription_at: timestamp
         )
+      end
+
+      it 'enqueues Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob' do
+        allow(Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob).to receive(:perform_later)
+        activate_service.activate_all_pending
+        expect(Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob)
+          .to have_received(:perform_later).with(subscription: pending_subscription)
       end
 
       it 'takes timezone into account' do
@@ -44,7 +53,7 @@ RSpec.describe Subscriptions::ActivateService, type: :service do
           :subscription,
           :pending,
           subscription_at: timestamp,
-          plan: create(:plan, pay_in_advance: true, trial_period: 10),
+          plan: create(:plan, pay_in_advance: true, trial_period: 10)
         )
 
         expect { activate_service.activate_all_pending }

@@ -4,13 +4,15 @@ module BillableMetrics
   module Aggregations
     class MaxService < BillableMetrics::Aggregations::BaseService
       def initialize(...)
-        super(...)
+        super
 
         event_store.numeric_property = true
         event_store.aggregation_property = billable_metric.field_name
       end
 
       def compute_aggregation(options: {})
+        return empty_result if should_bypass_aggregation?
+
         result.aggregation = event_store.max || 0
         result.count = event_store.count
         result.options = options
@@ -20,6 +22,8 @@ module BillableMetrics
       end
 
       def compute_grouped_by_aggregation(options)
+        return empty_results if should_bypass_aggregation?
+
         aggregations = event_store.grouped_max
         return empty_results if aggregations.blank?
 
@@ -42,7 +46,7 @@ module BillableMetrics
         result.service_failure!(code: 'aggregation_failure', message: e.message)
       end
 
-      def compute_per_event_aggregation
+      def compute_per_event_aggregation(exclude_event:)
         max_value = event_store.max || 0
         event_values = event_store.events_values
         max_value_seen = false

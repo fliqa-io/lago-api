@@ -11,18 +11,18 @@ it:
     - Sab
     abbr_month_names:
     -
-    - Gen
-    - Feb
-    - Mar
-    - Apr
-    - Mag
-    - Giu
-    - Lug
-    - Ago
-    - Set
-    - Ott
-    - Nov
-    - Dic
+    - gen
+    - feb
+    - mar
+    - apr
+    - mag
+    - giu
+    - lug
+    - ago
+    - set
+    - ott
+    - nov
+    - dic
     day_names:
     - Domenica
     - Lunedì
@@ -32,7 +32,7 @@ it:
     - Venerdì
     - Sabato
     formats:
-      default: "%d %b. %Y"
+      default: "%d %b %Y"
     month_names:
     -
     - Gennaio

@@ -21,20 +21,29 @@ module Invoices
           invoice_type: :add_on,
           payment_status: :pending,
           currency:,
-          timezone: customer.applicable_timezone,
+          timezone: customer.applicable_timezone
         )
 
         create_add_on_fee(invoice)
         compute_amounts(invoice)
+        Invoices::ApplyInvoiceCustomSectionsService.call(invoice:)
 
         invoice.save!
 
         result.invoice = invoice
       end
 
-      track_invoice_created(result.invoice)
-      SendWebhookJob.perform_later('invoice.add_on_added', result.invoice) if should_deliver_webhook?
-      InvoiceMailer.with(invoice: result.invoice).finalized.deliver_later if should_deliver_email?
+      Utils::SegmentTrack.invoice_created(result.invoice)
+      SendWebhookJob.perform_later('invoice.add_on_added', result.invoice)
+      GeneratePdfAndNotifyJob.perform_later(invoice: result.invoice, email: should_deliver_email?)
+
+      if result.invoice.should_sync_invoice?
+        Integrations::Aggregator::Invoices::CreateJob.perform_later(invoice: result.invoice)
+      end
+
+      if result.invoice.should_sync_hubspot_invoice?
+        Integrations::Aggregator::Invoices::Hubspot::CreateJob.perform_later(invoice: result.invoice)
+      end
 
       create_payment(result.invoice)
 
@@ -70,24 +79,8 @@ module Invoices
       fee_result.raise_if_error!
     end
 
-    def should_deliver_webhook?
-      customer.organization.webhook_endpoints.any?
-    end
-
     def create_payment(invoice)
-      Invoices::Payments::CreateService.new(invoice).call
-    end
-
-    def track_invoice_created(invoice)
-      SegmentTrackJob.perform_later(
-        membership_id: CurrentContext.membership,
-        event: 'invoice_created',
-        properties: {
-          organization_id: invoice.organization.id,
-          invoice_id: invoice.id,
-          invoice_type: invoice.invoice_type,
-        },
-      )
+      Invoices::Payments::CreateService.call_async(invoice:)
     end
 
     # NOTE: accounting date must be in customer timezone

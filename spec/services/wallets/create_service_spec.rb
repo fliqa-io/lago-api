@@ -3,19 +3,19 @@
 require 'rails_helper'
 
 RSpec.describe Wallets::CreateService, type: :service do
-  subject(:create_service) { described_class.new(membership.user) }
+  subject(:create_service) { described_class.new(params:) }
 
   let(:membership) { create(:membership) }
   let(:organization) { membership.organization }
   let(:customer) { create(:customer, organization:, external_id: 'foobar', currency: customer_currency) }
   let(:customer_currency) { 'EUR' }
 
-  describe '.create' do
+  describe '#call' do
     let(:paid_credits) { '1.00' }
     let(:granted_credits) { '0.00' }
     let(:expiration_at) { (Time.current + 1.year).iso8601 }
 
-    let(:create_args) do
+    let(:params) do
       {
         name: 'New Wallet',
         customer:,
@@ -24,11 +24,11 @@ RSpec.describe Wallets::CreateService, type: :service do
         rate_amount: '1.00',
         expiration_at:,
         paid_credits:,
-        granted_credits:,
+        granted_credits:
       }
     end
 
-    let(:service_result) { create_service.create(**create_args) }
+    let(:service_result) { create_service.call }
 
     it 'creates a wallet' do
       aggregate_failures do
@@ -43,6 +43,7 @@ RSpec.describe Wallets::CreateService, type: :service do
         expect(wallet.rate_amount).to eq(1.0)
         expect(wallet.expiration_at.iso8601).to eq(expiration_at)
         expect(wallet.recurring_transaction_rules.count).to eq(0)
+        expect(wallet.invoice_requires_successful_payment).to eq(false)
       end
     end
 
@@ -60,13 +61,81 @@ RSpec.describe Wallets::CreateService, type: :service do
       end
     end
 
+    context 'when invoice_requires_successful_payment is set ' do
+      let(:params) do
+        {
+          name: 'New Wallet',
+          customer:,
+          organization_id: organization.id,
+          currency: 'EUR',
+          rate_amount: '1.00',
+          paid_credits:,
+          invoice_requires_successful_payment: true
+        }
+      end
+
+      it 'follows the value' do
+        aggregate_failures do
+          expect { service_result }.to change(Wallet, :count).by(1)
+
+          expect(service_result).to be_success
+
+          wallet = service_result.wallet
+          expect(wallet.invoice_requires_successful_payment).to eq(true)
+        end
+      end
+    end
+
     context 'when customer does not have a currency' do
       let(:customer_currency) { nil }
 
       it 'applies the currency to the customer' do
-        create_service.create(**create_args)
-
+        service_result
         expect(customer.reload.currency).to eq('EUR')
+      end
+
+      context 'when no currency is provided' do
+        let(:params) do
+          {
+            name: 'New Wallet',
+            customer:,
+            organization_id: organization.id,
+            currency: nil,
+            rate_amount: '1.00',
+            expiration_at:,
+            paid_credits:,
+            granted_credits:
+          }
+        end
+
+        it 'returns an error' do
+          expect(service_result).not_to be_success
+          expect(service_result.error.messages[:currency]).to eq(['value_is_invalid'])
+        end
+      end
+    end
+
+    context 'when wallet have transaction metadata' do
+      let(:params) do
+        {
+          name: 'New Wallet',
+          customer:,
+          organization_id: organization.id,
+          currency: 'EUR',
+          rate_amount: '1.00',
+          expiration_at:,
+          paid_credits: '10',
+          granted_credits: '10',
+          transaction_metadata: [{'key' => 'valid_value', 'value' => 'also_valid'}]
+        }
+      end
+
+      it 'enqueues the job with correct metadata' do
+        expect { service_result }.to have_enqueued_job(
+          WalletTransactions::CreateJob
+        ).with(hash_including(
+          params: hash_including(metadata: params[:transaction_metadata])
+        ))
       end
     end
 
@@ -76,12 +145,16 @@ RSpec.describe Wallets::CreateService, type: :service do
       let(:rules) do
         [
           {
-            rule_type: 'interval',
-            interval: 'monthly',
-          },
+            interval: "monthly",
+            method: "target",
+            paid_credits: "10.0",
+            granted_credits: "5.0",
+            target_ongoing_balance: "100.0",
+            trigger: "interval"
+          }
         ]
       end
-      let(:create_args) do
+      let(:params) do
         {
           name: 'New Wallet',
           customer:,
@@ -91,7 +164,7 @@ RSpec.describe Wallets::CreateService, type: :service do
           expiration_at:,
           paid_credits:,
           granted_credits:,
-          recurring_transaction_rules: rules,
+          recurring_transaction_rules: rules
         }
       end
 
@@ -100,18 +173,9 @@ RSpec.describe Wallets::CreateService, type: :service do
           expect { service_result }.to change(Wallet, :count).by(1)
 
           expect(service_result).to be_success
-
           wallet = service_result.wallet
-          rule = service_result.wallet.reload.recurring_transaction_rules.first
-
           expect(wallet.name).to eq('New Wallet')
-          expect(rule.wallet_id).to eq(wallet.id)
           expect(wallet.reload.recurring_transaction_rules.count).to eq(1)
-          expect(rule.rule_type).to eq('interval')
-          expect(rule.interval).to eq('monthly')
-          expect(rule.threshold_credits).to eq(0.0)
-          expect(rule.paid_credits).to eq(1.0)
-          expect(rule.granted_credits).to eq(0.0)
         end
       end
 
@@ -119,13 +183,13 @@ RSpec.describe Wallets::CreateService, type: :service do
         let(:rules) do
           [
             {
-              rule_type: 'interval',
-              interval: 'monthly',
+              trigger: 'interval',
+              interval: 'monthly'
             },
             {
-              rule_type: 'threshold',
-              threshold_credits: '1.0',
-            },
+              trigger: 'threshold',
+              threshold_credits: '1.0'
+            }
           ]
         end
 
@@ -136,13 +200,13 @@ RSpec.describe Wallets::CreateService, type: :service do
         end
       end
 
-      context 'when rule type is invalid' do
+      context 'when trigger is invalid' do
         let(:rules) do
           [
             {
-              rule_type: 'invalid',
-              interval: 'monthly',
-            },
+              trigger: 'invalid',
+              interval: 'monthly'
+            }
           ]
         end
 
@@ -156,9 +220,9 @@ RSpec.describe Wallets::CreateService, type: :service do
         let(:rules) do
           [
             {
-              rule_type: 'threshold',
-              threshold_credits: 'abc',
-            },
+              trigger: 'threshold',
+              threshold_credits: 'abc'
+            }
           ]
         end
 

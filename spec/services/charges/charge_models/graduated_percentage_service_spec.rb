@@ -7,7 +7,7 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
     described_class.apply(
       charge:,
       aggregation_result:,
-      properties: charge.properties,
+      properties: charge.properties
     )
   end
 
@@ -27,22 +27,22 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
             from_value: 0,
             to_value: 10,
             flat_amount: '200',
-            rate: '1',
+            rate: '1'
           },
           {
             from_value: 11,
             to_value: 20,
             flat_amount: '300',
-            rate: '2',
+            rate: '2'
           },
           {
             from_value: 21,
             to_value: nil,
             flat_amount: '400',
-            rate: '3',
-          },
-        ],
-      },
+            rate: '3'
+          }
+        ]
+      }
     )
   end
 
@@ -63,10 +63,10 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.0',
               total_with_flat_amount: 0,
               rate: 1.0,
-              units: '0.0',
-            },
-          ],
-        },
+              units: '0.0'
+            }
+          ]
+        }
       )
     end
   end
@@ -89,10 +89,10 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.01',
               total_with_flat_amount: 200.01,
               rate: 1.0,
-              units: '1.0',
-            },
-          ],
-        },
+              units: '1.0'
+            }
+          ]
+        }
       )
     end
   end
@@ -115,10 +115,10 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.1',
               total_with_flat_amount: 200.1,
               rate: 1.0,
-              units: '10.0',
-            },
-          ],
-        },
+              units: '10.0'
+            }
+          ]
+        }
       )
     end
   end
@@ -141,7 +141,7 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.1',
               total_with_flat_amount: 200.1,
               rate: 1.0,
-              units: '10.0',
+              units: '10.0'
             },
             {
               flat_unit_amount: 300,
@@ -150,10 +150,10 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.02',
               total_with_flat_amount: 300.02,
               rate: 2.0,
-              units: '1.0',
-            },
-          ],
-        },
+              units: '1.0'
+            }
+          ]
+        }
       )
     end
   end
@@ -176,7 +176,7 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.1',
               total_with_flat_amount: 200.1,
               rate: 1.0,
-              units: '10.0',
+              units: '10.0'
             },
             {
               flat_unit_amount: 300,
@@ -185,10 +185,10 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.04',
               total_with_flat_amount: 300.04,
               rate: 2.0,
-              units: '2.0',
-            },
-          ],
-        },
+              units: '2.0'
+            }
+          ]
+        }
       )
     end
   end
@@ -211,7 +211,7 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.1',
               total_with_flat_amount: 200.1,
               rate: 1.0,
-              units: '10.0',
+              units: '10.0'
             },
             {
               flat_unit_amount: 300,
@@ -220,7 +220,7 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.2',
               total_with_flat_amount: 300.2,
               rate: 2.0,
-              units: '10.0',
+              units: '10.0'
             },
             {
               flat_unit_amount: 400,
@@ -229,10 +229,10 @@ RSpec.describe Charges::ChargeModels::GraduatedPercentageService, type: :service
               per_unit_total_amount: '0.03',
               total_with_flat_amount: 400.03,
               rate: 3.0,
-              units: '1.0',
-            },
-          ],
-        },
+              units: '1.0'
+            }
+          ]
+        }
       )
     end
   end

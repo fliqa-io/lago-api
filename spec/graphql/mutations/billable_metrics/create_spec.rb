@@ -13,6 +13,7 @@ RSpec.describe Mutations::BillableMetrics::Create, type: :graphql do
           name,
           code,
           aggregationType,
+          expression,
           recurring
           organization { id },
           weightedInterval
@@ -42,11 +43,11 @@ RSpec.describe Mutations::BillableMetrics::Create, type: :graphql do
           filters: [
             {
               key: 'region',
-              values: %w[usa europe],
-            },
-          ],
-        },
-      },
+              values: %w[usa europe]
+            }
+          ]
+        }
+      }
     )
 
     result_data = result['data']['createBillableMetric']

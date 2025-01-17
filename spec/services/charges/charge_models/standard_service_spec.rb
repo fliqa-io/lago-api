@@ -7,7 +7,7 @@ RSpec.describe Charges::ChargeModels::StandardService, type: :service do
     described_class.apply(
       charge:,
       aggregation_result:,
-      properties: charge.properties,
+      properties: charge.properties
     )
   end
 
@@ -27,8 +27,8 @@ RSpec.describe Charges::ChargeModels::StandardService, type: :service do
       :standard_charge,
       charge_model: 'standard',
       properties: {
-        amount: '5.12345',
-      },
+        amount: '5.12345'
+      }
     )
   end
 

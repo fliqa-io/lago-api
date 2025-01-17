@@ -12,12 +12,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         grouped_by:,
         grouped_by_values:,
         matching_filters:,
-        ignored_filters:,
-      },
+        ignored_filters:
+      }
     )
   end
 
-  let(:billable_metric) { create(:billable_metric, field_name: 'value') }
+  let(:billable_metric) { create(:billable_metric, field_name: 'value', code: 'bm:code') }
   let(:organization) { billable_metric.organization }
 
   let(:customer) { create(:customer, organization:) }
@@ -30,7 +30,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
     {
       from_datetime: started_at.beginning_of_day,
       to_datetime: started_at.end_of_month.end_of_day,
-      charges_duration: 31,
+      charges_duration: 31
     }
   end
 
@@ -51,8 +51,9 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         code:,
         timestamp: boundaries[:from_datetime] + (i + 1).days,
         properties: {
-          billable_metric.field_name => i + 1,
+          billable_metric.field_name => i + 1
         },
+        precise_total_amount_cents: i + 1
       )
 
       if i.even?
@@ -114,6 +115,22 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
     end
   end
 
+  describe '#distinct_codes' do
+    before do
+      create(
+        :event,
+        organization_id: organization.id,
+        external_subscription_id: subscription.external_id,
+        code: 'other_code',
+        timestamp: boundaries[:from_datetime] + (1..10).to_a.sample.days
+      )
+    end
+
+    it 'returns the distinct event codes' do
+      expect(event_store.distinct_codes).to match_array([code, 'other_code'])
+    end
+  end
+
   describe '#count' do
     it 'returns the number of unique events' do
       expect(event_store.count).to eq(5)
@@ -128,11 +145,11 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(result.count).to eq(4)
 
-      null_group = result.last
+      null_group = result.find { |r| r[:groups]['cloud'].nil? }
       expect(null_group[:groups]['cloud']).to be_nil
       expect(null_group[:value]).to eq(2)
 
-      result[...-1].each do |row|
+      result.without(null_group).each do |row|
         expect(row[:groups]['cloud']).not_to be_nil
         expect(row[:value]).to eq(1)
       end
@@ -146,12 +163,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
         expect(result.count).to eq(4)
 
-        null_group = result.last
+        null_group = result.find { |r| r[:groups]['cloud'].nil? }
         expect(null_group[:groups]['cloud']).to be_nil
         expect(null_group[:groups]['region']).to be_nil
         expect(null_group[:value]).to eq(2)
 
-        result[...-1].each do |row|
+        result.without(null_group).each do |row|
           expect(row[:groups]['cloud']).not_to be_nil
           expect(row[:groups]['region']).not_to be_nil
           expect(row[:value]).to eq(1)
@@ -172,8 +189,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         code:,
         timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
         properties: {
-          billable_metric.field_name => SecureRandom.uuid,
-        },
+          billable_metric.field_name => SecureRandom.uuid
+        }
       )
 
       expect(event_store).not_to be_active_unique_property(event)
@@ -189,8 +206,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           code:,
           timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
           properties: {
-            billable_metric.field_name => 2,
-          },
+            billable_metric.field_name => 2
+          }
         )
 
         event = create(
@@ -201,8 +218,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           code:,
           timestamp: (boundaries[:from_datetime] + 3.days).end_of_day,
           properties: {
-            billable_metric.field_name => 2,
-          },
+            billable_metric.field_name => 2
+          }
         )
 
         expect(event_store).to be_active_unique_property(event)
@@ -220,8 +237,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
           properties: {
             billable_metric.field_name => 2,
-            :operation_type => 'remove',
-          },
+            :operation_type => 'remove'
+          }
         )
 
         event = create(
@@ -232,8 +249,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           code:,
           timestamp: (boundaries[:from_datetime] + 3.days).end_of_day,
           properties: {
-            billable_metric.field_name => 2,
-          },
+            billable_metric.field_name => 2
+          }
         )
 
         expect(event_store).not_to be_active_unique_property(event)
@@ -252,8 +269,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         timestamp: (boundaries[:from_datetime] + 2.days).end_of_day,
         properties: {
           billable_metric.field_name => 2,
-          :operation_type => 'remove',
-        },
+          :operation_type => 'remove'
+        }
       )
 
       event_store.aggregation_property = billable_metric.field_name
@@ -271,7 +288,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         external_customer_id: customer.external_id,
         code:,
         timestamp: boundaries[:from_datetime] + 1.day,
-        properties: {billable_metric.field_name => 2},
+        properties: {billable_metric.field_name => 2}
       )
 
       create(
@@ -283,8 +300,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         timestamp: boundaries[:from_datetime] + 2.days - 1.second,
         properties: {
           billable_metric.field_name => 2,
-          :operation_type => 'remove',
-        },
+          :operation_type => 'remove'
+        }
       )
 
       event_store.aggregation_property = billable_metric.field_name
@@ -309,8 +326,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           timestamp: boundaries[:from_datetime] + 1.hour,
           properties: {
             billable_metric.field_name => 2,
-            :agent_name => 'frodo',
-          },
+            :agent_name => 'frodo'
+          }
         ),
         create(
           :event,
@@ -321,8 +338,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           timestamp: boundaries[:from_datetime] + 1.day,
           properties: {
             billable_metric.field_name => 2,
-            :agent_name => 'aragorn',
-          },
+            :agent_name => 'aragorn'
+          }
         ),
         create(
           :event,
@@ -334,8 +351,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           properties: {
             billable_metric.field_name => 2,
             :agent_name => 'aragorn',
-            :operation_type => 'remove',
-          },
+            :operation_type => 'remove'
+          }
         ),
         create(
           :event,
@@ -344,8 +361,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           external_customer_id: customer.external_id,
           code:,
           timestamp: boundaries[:from_datetime] + 2.days,
-          properties: {billable_metric.field_name => 2},
-        ),
+          properties: {billable_metric.field_name => 2}
+        )
       ]
     end
 
@@ -358,12 +375,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(result.count).to eq(3)
 
-      null_group = result.last
+      null_group = result.find { |r| r[:groups]['agent_name'].nil? }
       expect(null_group[:groups]['agent_name']).to be_nil
       expect(null_group[:groups]['other']).to be_nil
       expect(null_group[:value]).to eq(1)
 
-      expect(result[...-1].map { |r| r[:value] }).to contain_exactly(1, 0)
+      expect(result.without(null_group).map { |r| r[:value] }).to contain_exactly(1, 0)
     end
 
     context 'with no events' do
@@ -391,8 +408,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           timestamp: boundaries[:from_datetime] + 1.day,
           properties: {
             billable_metric.field_name => 2,
-            :agent_name => 'frodo',
-          },
+            :agent_name => 'frodo'
+          }
         ),
         create(
           :event,
@@ -403,8 +420,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           timestamp: boundaries[:from_datetime] + 1.day,
           properties: {
             billable_metric.field_name => 2,
-            :agent_name => 'aragorn',
-          },
+            :agent_name => 'aragorn'
+          }
         ),
         create(
           :event,
@@ -416,8 +433,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           properties: {
             billable_metric.field_name => 2,
             :agent_name => 'aragorn',
-            :operation_type => 'remove',
-          },
+            :operation_type => 'remove'
+          }
         ),
         create(
           :event,
@@ -426,8 +443,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           external_customer_id: customer.external_id,
           code:,
           timestamp: boundaries[:from_datetime] + 2.days,
-          properties: {billable_metric.field_name => 2},
-        ),
+          properties: {billable_metric.field_name => 2}
+        )
       ]
     end
 
@@ -440,13 +457,13 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(result.count).to eq(3)
 
-      null_group = result.last
+      null_group = result.find { |r| r[:groups]['agent_name'].nil? }
       expect(null_group[:groups]['agent_name']).to be_nil
       expect(null_group[:groups]['other']).to be_nil
       expect(null_group[:value].round(3)).to eq(0.935) # 29/31
 
       # NOTE: Events calculation: [1/31, 30/31]
-      expect(result[...-1].map { |r| r[:value].round(3) }).to contain_exactly(0.032, 0.968)
+      expect(result.without(null_group).map { |r| r[:value].round(3) }).to contain_exactly(0.032, 0.968)
     end
 
     context 'with no events' do
@@ -469,8 +486,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         code:,
         timestamp: boundaries[:from_datetime] + 1.day,
         properties: {
-          billable_metric.field_name => 2,
-        },
+          billable_metric.field_name => 2
+        }
       )
 
       Event.create!(
@@ -482,8 +499,8 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         timestamp: (boundaries[:from_datetime] + 1.day).end_of_day,
         properties: {
           billable_metric.field_name => 2,
-          :operation_type => 'remove',
-        },
+          :operation_type => 'remove'
+        }
       )
 
       event_store.aggregation_property = billable_metric.field_name
@@ -532,6 +549,42 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(event_store.events_values).to eq([1, 2, 3, 4, 5])
     end
+
+    context 'when exclude_event is true' do
+      subject(:event_store) do
+        described_class.new(
+          code:,
+          subscription:,
+          boundaries:,
+          filters: {
+            grouped_by:,
+            grouped_by_values:,
+            matching_filters:,
+            ignored_filters:,
+            event:
+          }
+        )
+      end
+
+      let(:event) do
+        create(
+          :event,
+          organization:,
+          external_subscription_id: subscription.external_id,
+          code:,
+          timestamp: boundaries[:from_datetime] + 1.day,
+          properties: {billable_metric.field_name => 6}
+        )
+      end
+
+      it 'excludes current event but returns the value attached to other events' do
+        event
+        event_store.aggregation_property = billable_metric.field_name
+        event_store.numeric_property = true
+
+        expect(event_store.events_values(exclude_event: true)).to eq([1, 2, 3, 4, 5])
+      end
+    end
   end
 
   describe '#last_event' do
@@ -556,12 +609,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(result.count).to eq(4)
 
-      null_group = result.last
+      null_group = result.find { |r| r[:groups]['cloud'].nil? }
       expect(null_group[:groups]['cloud']).to be_nil
       expect(null_group[:value]).to eq(4)
       expect(null_group[:timestamp]).not_to be_nil
 
-      result[...-1].each do |row|
+      result.without(null_group).each do |row|
         expect(row[:groups]['cloud']).not_to be_nil
         expect(row[:value]).not_to be_nil
         expect(row[:timestamp]).not_to be_nil
@@ -576,13 +629,13 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
         expect(result.count).to eq(4)
 
-        null_group = result.last
+        null_group = result.find { |r| r[:groups]['cloud'].nil? }
         expect(null_group[:groups]['cloud']).to be_nil
         expect(null_group[:groups]['region']).to be_nil
         expect(null_group[:value]).to eq(4)
         expect(null_group[:timestamp]).not_to be_nil
 
-        result[...-1].each do |row|
+        result.without(null_group).each do |row|
           expect(row[:groups]['cloud']).not_to be_nil
           expect(row[:groups]['region']).not_to be_nil
           expect(row[:value]).not_to be_nil
@@ -598,7 +651,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
       event_store.numeric_property = true
 
       expect(event_store.prorated_events_values(31).map { |v| v.round(3) }).to eq(
-        [0.516, 0.968, 1.355, 1.677, 1.935],
+        [0.516, 0.968, 1.355, 1.677, 1.935]
       )
     end
   end
@@ -625,11 +678,11 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(result.count).to eq(4)
 
-      null_group = result.last
+      null_group = result.find { |r| r[:groups]['cloud'].nil? }
       expect(null_group[:groups]['cloud']).to be_nil
       expect(null_group[:value]).to eq(4)
 
-      result[...-1].each do |row|
+      result.without(null_group).each do |row|
         expect(row[:groups]['cloud']).not_to be_nil
         expect(row[:value]).not_to be_nil
       end
@@ -643,12 +696,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
         expect(result.count).to eq(4)
 
-        null_group = result.last
+        null_group = result.find { |r| r[:groups]['cloud'].nil? }
         expect(null_group[:groups]['cloud']).to be_nil
         expect(null_group[:groups]['region']).to be_nil
         expect(null_group[:value]).to eq(4)
 
-        result[...-1].each do |row|
+        result.without(null_group).each do |row|
           expect(row[:groups]['cloud']).not_to be_nil
           expect(row[:groups]['region']).not_to be_nil
           expect(row[:value]).not_to be_nil
@@ -679,11 +732,11 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(result.count).to eq(4)
 
-      null_group = result.last
+      null_group = result.find { |r| r[:groups]['cloud'].nil? }
       expect(null_group[:groups]['cloud']).to be_nil
       expect(null_group[:value]).to eq(4)
 
-      result[...-1].each do |row|
+      result.without(null_group).each do |row|
         expect(row[:groups]['cloud']).not_to be_nil
         expect(row[:value]).not_to be_nil
       end
@@ -697,12 +750,59 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
         expect(result.count).to eq(4)
 
-        null_group = result.last
+        null_group = result.find { |r| r[:groups]['cloud'].nil? }
+
         expect(null_group[:groups]['cloud']).to be_nil
         expect(null_group[:groups]['region']).to be_nil
         expect(null_group[:value]).to eq(4)
 
-        result[...-1].each do |row|
+        result.without(null_group).each do |row|
+          expect(row[:groups]['cloud']).not_to be_nil
+          expect(row[:groups]['region']).not_to be_nil
+          expect(row[:value]).not_to be_nil
+        end
+      end
+    end
+  end
+
+  describe '#sum_precise_total_amount_cents' do
+    it 'returns the sum of precise_total_amount_cent values' do
+      expect(event_store.sum_precise_total_amount_cents).to eq(15)
+    end
+  end
+
+  describe '#grouped_sum_precise_total_amount_cents' do
+    let(:grouped_by) { %w[cloud] }
+
+    it 'returns the sum of values grouped by the provided group' do
+      result = event_store.grouped_sum_precise_total_amount_cents
+
+      expect(result.count).to eq(4)
+
+      null_group = result.find { |r| r[:groups]['cloud'].nil? }
+      expect(null_group[:groups]['cloud']).to be_nil
+      expect(null_group[:value]).to eq(6)
+
+      result.without(null_group).each do |row|
+        expect(row[:groups]['cloud']).not_to be_nil
+        expect(row[:value]).not_to be_nil
+      end
+    end
+
+    context 'with multiple groups' do
+      let(:grouped_by) { %w[cloud region] }
+
+      it 'returns the sum of values grouped by the provided groups' do
+        result = event_store.grouped_sum_precise_total_amount_cents
+
+        expect(result.count).to eq(4)
+
+        null_group = result.find { |r| r[:groups]['cloud'].nil? }
+        expect(null_group[:groups]['cloud']).to be_nil
+        expect(null_group[:groups]['region']).to be_nil
+        expect(null_group[:value]).to eq(6)
+
+        result.without(null_group).each do |row|
           expect(row[:groups]['cloud']).not_to be_nil
           expect(row[:groups]['region']).not_to be_nil
           expect(row[:value]).not_to be_nil
@@ -733,11 +833,11 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(result.count).to eq(4)
 
-      null_group = result.last
+      null_group = result.find { |r| r[:groups]['cloud'].nil? }
       expect(null_group[:groups]['cloud']).to be_nil
       expect(null_group[:value]).to eq(6)
 
-      result[...-1].each do |row|
+      result.without(null_group).each do |row|
         expect(row[:groups]['cloud']).not_to be_nil
         expect(row[:value]).not_to be_nil
       end
@@ -751,12 +851,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
         expect(result.count).to eq(4)
 
-        null_group = result.last
+        null_group = result.find { |r| r[:groups]['cloud'].nil? }
         expect(null_group[:groups]['cloud']).to be_nil
         expect(null_group[:groups]['region']).to be_nil
         expect(null_group[:value]).to eq(6)
 
-        result[...-1].each do |row|
+        result.without(null_group).each do |row|
           expect(row[:groups]['cloud']).not_to be_nil
           expect(row[:groups]['region']).not_to be_nil
           expect(row[:value]).not_to be_nil
@@ -794,11 +894,11 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(result.count).to eq(4)
 
-      null_group = result.last
+      null_group = result.find { |r| r[:groups]['cloud'].nil? }
       expect(null_group[:groups]['cloud']).to be_nil
       expect(null_group[:value].round(5)).to eq(2.64516)
 
-      result[...-1].each do |row|
+      result.without(null_group).each do |row|
         expect(row[:groups]['cloud']).not_to be_nil
         expect(row[:value]).not_to be_nil
       end
@@ -813,11 +913,11 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
         expect(result.count).to eq(4)
 
-        null_group = result.last
+        null_group = result.find { |r| r[:groups]['cloud'].nil? }
         expect(null_group[:groups]['cloud']).to be_nil
         expect(null_group[:value].round(5)).to eq(1.93548)
 
-        result[...-1].each do |row|
+        result.without(null_group).each do |row|
           expect(row[:groups]['cloud']).not_to be_nil
           expect(row[:value]).not_to be_nil
         end
@@ -835,12 +935,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
         expect(result.count).to eq(4)
 
-        null_group = result.last
+        null_group = result.find { |r| r[:groups]['cloud'].nil? }
         expect(null_group[:groups]['cloud']).to be_nil
         expect(null_group[:groups]['region']).to be_nil
         expect(null_group[:value].round(5)).to eq(2.64516)
 
-        result[...-1].each do |row|
+        result.without(null_group).each do |row|
           expect(row[:groups]['cloud']).not_to be_nil
           expect(row[:groups]['region']).not_to be_nil
           expect(row[:value]).not_to be_nil
@@ -858,9 +958,9 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         events.map do |e|
           {
             date: e.timestamp.to_date,
-            value: e.properties[billable_metric.field_name],
+            value: e.properties[billable_metric.field_name]
           }
-        end,
+        end
       )
     end
   end
@@ -876,7 +976,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         {timestamp: Time.zone.parse('2023-03-01 02:00:00'), value: -4},
         {timestamp: Time.zone.parse('2023-03-01 04:00:00'), value: -2},
         {timestamp: Time.zone.parse('2023-03-01 05:00:00'), value: 10},
-        {timestamp: Time.zone.parse('2023-03-01 05:30:00'), value: -10},
+        {timestamp: Time.zone.parse('2023-03-01 05:30:00'), value: -10}
       ]
     end
 
@@ -894,7 +994,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           external_customer_id: customer.external_id,
           code:,
           timestamp: values[:timestamp],
-          properties:,
+          properties:
         )
 
         events << event
@@ -915,7 +1015,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
     context 'with a single event' do
       let(:events_values) do
         [
-          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 1000},
+          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 1000}
         ]
       end
 
@@ -936,7 +1036,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
       let(:events_values) do
         [
           {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 3},
-          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 3},
+          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 3}
         ]
       end
 
@@ -966,7 +1066,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       let(:events_values) do
         [
-          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 1000, region: 'europe'},
+          {timestamp: Time.zone.parse('2023-03-01 00:00:00.000'), value: 1000, region: 'europe'}
         ]
       end
 
@@ -1005,7 +1105,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         {timestamp: Time.zone.parse('2023-03-01 02:00:00'), value: -4},
         {timestamp: Time.zone.parse('2023-03-01 04:00:00'), value: -2},
         {timestamp: Time.zone.parse('2023-03-01 05:00:00'), value: 10},
-        {timestamp: Time.zone.parse('2023-03-01 05:30:00'), value: -10},
+        {timestamp: Time.zone.parse('2023-03-01 05:30:00'), value: -10}
       ]
     end
 
@@ -1024,7 +1124,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
           external_customer_id: customer.external_id,
           code:,
           timestamp: values[:timestamp],
-          properties:,
+          properties:
         )
 
         events << event
@@ -1043,12 +1143,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
       expect(result.count).to eq(3)
 
-      null_group = result.last
+      null_group = result.find { |r| r[:groups]['agent_name'].nil? }
       expect(null_group[:groups]['agent_name']).to be_nil
       expect(null_group[:groups]['other']).to be_nil
       expect(null_group[:value].round(5)).to eq(0.02218)
 
-      result[...-1].each do |row|
+      result.without(null_group).each do |row|
         expect(row[:groups]['agent_name']).not_to be_nil
         expect(row[:groups]['other']).to be_nil
         expect(row[:value].round(5)).to eq(0.02218)
@@ -1070,7 +1170,7 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
         [
           {groups: {'agent_name' => 'frodo', 'other' => nil}, value: 1000},
           {groups: {'agent_name' => 'aragorn', 'other' => nil}, value: 1000},
-          {groups: {'agent_name' => nil, 'other' => nil}, value: 1000},
+          {groups: {'agent_name' => nil, 'other' => nil}, value: 1000}
         ]
       end
 
@@ -1079,12 +1179,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
         expect(result.count).to eq(3)
 
-        null_group = result.last
+        null_group = result.find { |r| r[:groups]['agent_name'].nil? }
         expect(null_group[:groups]['agent_name']).to be_nil
         expect(null_group[:groups]['other']).to be_nil
         expect(null_group[:value].round(5)).to eq(1000.02218)
 
-        result[...-1].each do |row|
+        result.without(null_group).each do |row|
           expect(row[:groups]['agent_name']).not_to be_nil
           expect(row[:groups]['other']).to be_nil
           expect(row[:value].round(5)).to eq(1000.02218)
@@ -1099,12 +1199,12 @@ RSpec.describe Events::Stores::PostgresStore, type: :service do
 
           expect(result.count).to eq(3)
 
-          null_group = result.last
+          null_group = result.find { |r| r[:groups]['agent_name'].nil? }
           expect(null_group[:groups]['agent_name']).to be_nil
           expect(null_group[:groups]['other']).to be_nil
           expect(null_group[:value].round(5)).to eq(1000)
 
-          result[...-1].each do |row|
+          result.without(null_group).each do |row|
             expect(row[:groups]['agent_name']).not_to be_nil
             expect(row[:groups]['other']).to be_nil
             expect(row[:value].round(5)).to eq(1000)

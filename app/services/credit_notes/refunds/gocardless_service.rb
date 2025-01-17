@@ -29,20 +29,29 @@ module CreditNotes
           amount_cents: gocardless_result.amount,
           amount_currency: gocardless_result.currency&.upcase,
           status: gocardless_result.status,
-          provider_refund_id: gocardless_result.id,
+          provider_refund_id: gocardless_result.id
         )
         refund.save!
 
         update_credit_note_status(credit_note_status(refund.status))
-        track_refund_status_changed(refund.status)
+        Utils::SegmentTrack.refund_status_changed(refund.status, credit_note.id, organization.id)
 
         result.refund = refund
         result
+      rescue GoCardlessPro::Error, GoCardlessPro::ValidationError => e
+        deliver_error_webhook(message: e.message, code: e.code)
+        update_credit_note_status(:failed)
+
+        if e.is_a?(GoCardlessPro::ValidationError)
+          result
+        else
+          raise
+        end
       end
 
-      def update_status(provider_refund_id:, status:)
+      def update_status(provider_refund_id:, status:, metadata: {})
         refund = Refund.find_by(provider_refund_id:)
-        return result.not_found_failure!(resource: 'gocardless_refund') unless refund
+        return handle_missing_refund(metadata) unless refund
 
         result.refund = refund
         @credit_note = result.credit_note = refund.credit_note
@@ -50,7 +59,7 @@ module CreditNotes
 
         refund.update!(status:)
         update_credit_note_status(credit_note_status(refund.status))
-        track_refund_status_changed(status)
+        Utils::SegmentTrack.refund_status_changed(refund.status, credit_note.id, organization.id)
 
         if FAILED_STATUSES.include?(status.to_s)
           deliver_error_webhook(message: 'Payment refund failed', code: nil)
@@ -81,7 +90,7 @@ module CreditNotes
       def client
         @client ||= GoCardlessPro::Client.new(
           access_token: gocardless_payment_provider.access_token,
-          environment: gocardless_payment_provider.environment,
+          environment: gocardless_payment_provider.environment
         )
       end
 
@@ -90,40 +99,35 @@ module CreditNotes
       end
 
       def create_gocardless_refund
+        # NOTE: Gocarless API accepts only 3 keys at max in metadata
+        #       See https://developer.gocardless.com/api-reference#refunds-create-a-refund
+        #       for reference
         client.refunds.create(
           params: {
             amount: credit_note.refund_amount_cents,
             total_amount_confirmation: credit_note.refund_amount_cents,
             links: {payment: payment.provider_payment_id},
             metadata: {
-              lago_customer_id: customer.id,
               lago_credit_note_id: credit_note.id,
               lago_invoice_id: invoice.id,
-              reason: credit_note.reason.to_s,
-            },
+              reason: credit_note.reason.to_s
+            }
           },
           headers: {
-            'Idempotency-Key' => credit_note.id,
-          },
+            'Idempotency-Key' => credit_note.id
+          }
         )
-      rescue GoCardlessPro::Error => e
-        deliver_error_webhook(message: e.message, code: e.code)
-        update_credit_note_status(:failed)
-
-        raise
       end
 
       def deliver_error_webhook(message:, code:)
-        return unless organization.webhook_endpoints.any?
-
         SendWebhookJob.perform_later(
           'credit_note.provider_refund_failure',
           credit_note,
           provider_customer_id: customer.gocardless_customer.provider_customer_id,
           provider_error: {
             message:,
-            error_code: code,
-          },
+            error_code: code
+          }
         )
       end
 
@@ -142,16 +146,14 @@ module CreditNotes
         status
       end
 
-      def track_refund_status_changed(status)
-        SegmentTrackJob.perform_later(
-          membership_id: CurrentContext.membership,
-          event: 'refund_status_changed',
-          properties: {
-            organization_id: organization.id,
-            credit_note_id: credit_note.id,
-            refund_status: status,
-          },
-        )
+      def handle_missing_refund(metadata)
+        # NOTE: Refund was not initiated by lago
+        return result unless metadata&.key?(:lago_invoice_id)
+
+        # NOTE: Invoice does not belongs to this lago instance
+        return result unless Invoice.find_by(id: metadata[:lago_invoice_id])
+
+        result.not_found_failure!(resource: 'gocardless_refund')
       end
     end
   end

@@ -7,11 +7,26 @@ module Customers
     def create_from_api(organization:, params:)
       customer = organization.customers.find_or_initialize_by(external_id: params[:external_id])
       new_customer = customer.new_record?
+      shipping_address = params[:shipping_address] ||= {}
 
       unless valid_metadata_count?(metadata: params[:metadata])
         return result.single_validation_failure!(
           field: :metadata,
-          error_code: 'invalid_count',
+          error_code: "invalid_count"
+        )
+      end
+
+      unless valid_finalize_zero_amount_invoice?(params[:finalize_zero_amount_invoice])
+        return result.single_validation_failure!(
+          field: :finalize_zero_amount_invoice,
+          error_code: "invalid_value"
+        )
+      end
+
+      unless valid_integration_customers_count?(integration_customers: params[:integration_customers])
+        return result.single_validation_failure!(
+          field: :integration_customers,
+          error_code: "invalid_count_per_integration_type"
         )
       end
 
@@ -24,6 +39,12 @@ module Customers
         customer.zipcode = params[:zipcode] if params.key?(:zipcode)
         customer.email = params[:email] if params.key?(:email)
         customer.city = params[:city] if params.key?(:city)
+        customer.shipping_address_line1 = shipping_address[:address_line1] if shipping_address.key?(:address_line1)
+        customer.shipping_address_line2 = shipping_address[:address_line2] if shipping_address.key?(:address_line2)
+        customer.shipping_city = shipping_address[:city] if shipping_address.key?(:city)
+        customer.shipping_zipcode = shipping_address[:zipcode] if shipping_address.key?(:zipcode)
+        customer.shipping_state = shipping_address[:state] if shipping_address.key?(:state)
+        customer.shipping_country = shipping_address[:country]&.upcase if shipping_address.key?(:country)
         customer.url = params[:url] if params.key?(:url)
         customer.phone = params[:phone] if params.key?(:phone)
         customer.logo_url = params[:logo_url] if params.key?(:logo_url)
@@ -31,6 +52,10 @@ module Customers
         customer.legal_number = params[:legal_number] if params.key?(:legal_number)
         customer.net_payment_term = params[:net_payment_term] if params.key?(:net_payment_term)
         customer.external_salesforce_id = params[:external_salesforce_id] if params.key?(:external_salesforce_id)
+        customer.finalize_zero_amount_invoice = params[:finalize_zero_amount_invoice] || "inherit" if params.key?(:finalize_zero_amount_invoice)
+        customer.firstname = params[:firstname] if params.key?(:firstname)
+        customer.lastname = params[:lastname] if params.key?(:lastname)
+        customer.customer_type = params[:customer_type] if params.key?(:customer_type)
         if params.key?(:tax_identification_number)
           customer.tax_identification_number = params[:tax_identification_number]
         end
@@ -38,34 +63,35 @@ module Customers
         assign_premium_attributes(customer, params)
 
         if params.key?(:currency)
-          currency_result = Customers::UpdateService.new(nil).update_currency(
-            customer:,
-            currency: params[:currency],
-            customer_update: true,
-          )
-          return currency_result unless currency_result.success?
+          Customers::UpdateCurrencyService
+            .call(customer:, currency: params[:currency], customer_update: true)
+            .raise_if_error!
         end
 
-        ActiveRecord::Base.transaction do
-          customer.save!
+        customer.save!
 
-          if customer.organization.eu_tax_management
-            eu_tax_code = Customers::EuAutoTaxesService.call(customer:)
+        if customer.organization.eu_tax_management
+          eu_tax_code = Customers::EuAutoTaxesService.call(customer:)
 
-            params[:tax_codes] ||= []
-            params[:tax_codes] = (params[:tax_codes] + [eu_tax_code]).uniq
-          end
+          params[:tax_codes] ||= []
+          params[:tax_codes] = (params[:tax_codes] + [eu_tax_code]).uniq
+        end
 
-          if params[:tax_codes].present?
-            taxes_result = Customers::ApplyTaxesService.call(customer:, tax_codes: params[:tax_codes])
-            taxes_result.raise_if_error!
-          end
+        if params.key?(:tax_codes)
+          taxes_result = Customers::ApplyTaxesService.call(customer:, tax_codes: params[:tax_codes])
+          taxes_result.raise_if_error!
+        end
 
-          if new_customer && params[:metadata]
-            params[:metadata].each { |m| create_metadata(customer:, args: m) }
-          elsif params[:metadata]
-            Customers::Metadata::UpdateService.call(customer:, params: params[:metadata])
-          end
+        Customers::ManageInvoiceCustomSectionsService.call(
+          customer:,
+          skip_invoice_custom_sections: params[:skip_invoice_custom_sections],
+          section_codes: params[:invoice_custom_section_codes]
+        ).raise_if_error!
+
+        if new_customer && params[:metadata]
+          params[:metadata].each { |m| create_metadata(customer:, args: m) }
+        elsif params[:metadata]
+          Customers::Metadata::UpdateService.call(customer:, params: params[:metadata])
         end
       end
 
@@ -73,6 +99,19 @@ module Customers
       handle_api_billing_configuration(customer, params, new_customer)
 
       result.customer = customer.reload
+
+      IntegrationCustomers::CreateOrUpdateService.call(
+        integration_customers: params[:integration_customers],
+        customer: result.customer,
+        new_customer:
+      )
+
+      if new_customer
+        SendWebhookJob.perform_later('customer.created', customer)
+      else
+        SendWebhookJob.perform_later('customer.updated', customer)
+      end
+
       track_customer_created(customer)
       result
     rescue BaseService::ServiceFailure => e
@@ -81,15 +120,18 @@ module Customers
       result.record_validation_failure!(record: e.record)
     rescue BaseService::FailedResult => e
       result.fail_with_error!(e)
+    rescue ActiveRecord::RecordNotUnique
+      result.single_validation_failure!(field: :external_id, error_code: "value_already_exist")
     end
 
     def create(**args)
       billing_configuration = args[:billing_configuration]&.to_h || {}
+      shipping_address = args[:shipping_address]&.to_h || {}
 
       unless valid_metadata_count?(metadata: args[:metadata])
         return result.single_validation_failure!(
           field: :metadata,
-          error_code: 'invalid_count',
+          error_code: "invalid_count"
         )
       end
 
@@ -102,6 +144,12 @@ module Customers
         address_line2: args[:address_line2],
         state: args[:state],
         zipcode: args[:zipcode],
+        shipping_address_line1: shipping_address[:address_line1],
+        shipping_address_line2: shipping_address[:address_line2],
+        shipping_country: shipping_address[:country]&.upcase,
+        shipping_state: shipping_address[:state],
+        shipping_zipcode: shipping_address[:zipcode],
+        shipping_city: shipping_address[:city],
         email: args[:email],
         city: args[:city],
         url: args[:url],
@@ -111,13 +159,19 @@ module Customers
         legal_number: args[:legal_number],
         net_payment_term: args[:net_payment_term],
         external_salesforce_id: args[:external_salesforce_id],
-        vat_rate: args[:vat_rate],
         payment_provider: args[:payment_provider],
         payment_provider_code: args[:payment_provider_code],
         currency: args[:currency],
         document_locale: billing_configuration[:document_locale],
         tax_identification_number: args[:tax_identification_number],
+        firstname: args[:firstname],
+        lastname: args[:lastname],
+        customer_type: args[:customer_type]
       )
+
+      if args.key?(:finalize_zero_amount_invoice)
+        customer.finalize_zero_amount_invoice = args[:finalize_zero_amount_invoice]
+      end
 
       assign_premium_attributes(customer, args)
 
@@ -142,11 +196,19 @@ module Customers
       # NOTE: handle configuration for configured payment providers
       billing_configuration = args[:provider_customer]&.to_h&.merge(
         payment_provider: args[:payment_provider],
-        payment_provider_code: args[:payment_provider_code],
+        payment_provider_code: args[:payment_provider_code]
       )
       create_billing_configuration(customer, billing_configuration)
 
       result.customer = customer
+
+      IntegrationCustomers::CreateOrUpdateService.call(
+        integration_customers: args[:integration_customers],
+        customer: result.customer,
+        new_customer: true
+      )
+
+      SendWebhookJob.perform_later('customer.created', customer)
       track_customer_created(customer)
       result
     rescue ActiveRecord::RecordInvalid => e
@@ -155,6 +217,11 @@ module Customers
 
     private
 
+    def valid_finalize_zero_amount_invoice?(value)
+      return true if value.nil?
+      Customer::FINALIZE_ZERO_AMOUNT_INVOICE_OPTIONS.include?(value.to_sym)
+    end
+
     def valid_metadata_count?(metadata:)
       return true if metadata.blank?
       return true if metadata.count <= ::Metadata::CustomerMetadata::COUNT_PER_CUSTOMER
@@ -162,11 +229,19 @@ module Customers
       false
     end
 
+    def valid_integration_customers_count?(integration_customers:)
+      return true if integration_customers.blank?
+
+      input_types = integration_customers&.map { |c| c.to_h.deep_symbolize_keys }&.map { |c| c[:integration_type] }
+
+      input_types.length == input_types.uniq.length
+    end
+
     def create_metadata(customer:, args:)
       customer.metadata.create!(
         key: args[:key],
         value: args[:value],
-        display_in_invoice: args[:display_in_invoice] || false,
+        display_in_invoice: args[:display_in_invoice] || false
       )
     end
 
@@ -190,7 +265,7 @@ module Customers
         payment_provider_result = PaymentProviders::FindService.new(
           organization_id: customer.organization_id,
           code: billing_configuration[:payment_provider_code].presence,
-          payment_provider_type: customer.payment_provider,
+          payment_provider_type: customer.payment_provider
         ).call
         payment_provider_result.raise_if_error!
 
@@ -210,9 +285,6 @@ module Customers
         Customers::UpdateInvoiceGracePeriodService.call(customer:, grace_period: billing[:invoice_grace_period])
       end
 
-      # NOTE(legacy): keep accepting vat_rate field temporary by converting it into tax
-      handle_legacy_vat_rate(customer:, vat_rate: billing[:vat_rate]) if billing.key?(:vat_rate)
-
       customer.document_locale = billing[:document_locale] if billing.key?(:document_locale)
 
       if new_customer || should_create_billing_configuration?(billing, customer)
@@ -223,8 +295,9 @@ module Customers
 
       if billing.key?(:payment_provider)
         customer.payment_provider = nil
-        if %w[stripe gocardless adyen].include?(billing[:payment_provider])
+        if Customer::PAYMENT_PROVIDERS.include?(billing[:payment_provider])
           customer.payment_provider = billing[:payment_provider]
+          customer.payment_provider_code = billing[:payment_provider_code] if billing.key?(:payment_provider_code)
         end
       end
 
@@ -245,61 +318,30 @@ module Customers
     end
 
     def create_or_update_provider_customer(customer, billing_configuration = {})
-      provider_class = case billing_configuration[:payment_provider] || customer.payment_provider
-      when 'stripe'
-        PaymentProviderCustomers::StripeCustomer
-      when 'gocardless'
-        PaymentProviderCustomers::GocardlessCustomer
-      when 'adyen'
-        PaymentProviderCustomers::AdyenCustomer
-      end
-
-      create_result = PaymentProviderCustomers::CreateService.new(customer).create_or_update(
-        customer_class: provider_class,
+      PaymentProviders::CreateCustomerFactory.new_instance(
+        provider: billing_configuration[:payment_provider] || customer.payment_provider,
+        customer:,
         payment_provider_id: payment_provider(customer)&.id,
         params: billing_configuration,
-        async: !(billing_configuration || {})[:sync],
-      )
-
-      create_result.raise_if_error!
+        async: !(billing_configuration || {})[:sync]
+      ).call.raise_if_error!
     end
 
     def track_customer_created(customer)
       SegmentTrackJob.perform_later(
         membership_id: CurrentContext.membership,
-        event: 'customer_created',
+        event: "customer_created",
         properties: {
           customer_id: customer.id,
           created_at: customer.created_at,
           payment_provider: customer.payment_provider,
-          organization_id: customer.organization_id,
-        },
+          organization_id: customer.organization_id
+        }
       )
     end
 
-    def handle_legacy_vat_rate(customer:, vat_rate:)
-      if customer.taxes.count > 1
-        result.single_validation_failure!(
-          field: :vat_rate,
-          error_code: 'multiple_taxes',
-        ).raise_if_error!
-      end
-
-      # NOTE(legacy): Keep updating vat_rate until we remove the field
-      customer.vat_rate = vat_rate
-
-      current_tax = customer.taxes.first
-      return if current_tax&.rate == vat_rate
-
-      tax = customer.organization.taxes
-        .create_with(rate: vat_rate, name: "Tax (#{vat_rate}%)")
-        .find_or_create_by!(code: "tax_#{vat_rate}")
-
-      Customers::ApplyTaxesService.call(customer:, tax_codes: [tax.code])
-    end
-
     def should_create_billing_configuration?(billing, customer)
-      billing[:sync_with_provider] && customer.provider_customer&.provider_customer_id.nil?
+      (billing[:sync_with_provider] || billing[:provider_customer_id].present?) && customer.provider_customer&.provider_customer_id.nil?
     end
   end
 end

@@ -8,6 +8,9 @@ user = User.create_with(password: 'ILoveLago')
   .find_or_create_by(email: 'gavin@hooli.com')
 
 organization = Organization.find_or_create_by!(name: 'Hooli')
+organization.premium_integrations = Organization::PREMIUM_INTEGRATIONS
+organization.save!
+ApiKey.find_or_create_by!(organization:)
 Membership.find_or_create_by!(user:, organization:, role: :admin)
 
 # NOTE: define a billing model
@@ -16,7 +19,7 @@ sum_metric = BillableMetric.find_or_create_by!(
   aggregation_type: 'sum_agg',
   name: 'Sum BM',
   code: 'sum_bm',
-  field_name: 'custom_field',
+  field_name: 'custom_field'
 )
 
 count_metric = BillableMetric.find_or_create_by!(
@@ -24,40 +27,40 @@ count_metric = BillableMetric.find_or_create_by!(
   aggregation_type: 'count_agg',
   name: 'Count BM',
   code: 'count_bm',
-  field_name: 'customer_field',
+  field_name: 'customer_field'
 )
 
 plan = Plan.create_with(
   interval: 'monthly',
   pay_in_advance: false,
   amount_cents: 100,
-  amount_currency: 'EUR',
+  amount_currency: 'EUR'
 ).find_or_create_by!(
   organization:,
   name: 'Standard Plan',
-  code: 'standard_plan',
+  code: 'standard_plan'
 )
 
 Charge.create_with(
   charge_model: 'standard',
   amount_currency: 'EUR',
   properties: {
-    amount: Faker::Number.between(from: 100, to: 500).to_s,
-  },
+    amount: Faker::Number.between(from: 100, to: 500).to_s
+  }
 ).find_or_create_by!(
   plan:,
-  billable_metric: sum_metric,
+  billable_metric: sum_metric
 )
 
 Charge.create_with(
   charge_model: 'standard',
   amount_currency: 'EUR',
   properties: {
-    amount: Faker::Number.between(from: 100, to: 500).to_s,
-  },
+    amount: Faker::Number.between(from: 100, to: 500).to_s
+  }
 ).find_or_create_by!(
   plan:,
-  billable_metric: count_metric,
+  billable_metric: count_metric
 )
 
 # NOTE: define customers
@@ -76,10 +79,10 @@ Charge.create_with(
     logo_url: Faker::Internet.url,
     legal_name: Faker::Company.name,
     legal_number: Faker::Company.duns_number,
-    currency: 'EUR',
+    currency: 'EUR'
   ).find_or_create_by!(
     organization:,
-    external_id: "cust_#{i + 1}",
+    external_id: "cust_#{i + 1}"
   )
 
   subscription_at = (Time.current - 6.months).beginning_of_month
@@ -88,11 +91,11 @@ Charge.create_with(
     started_at: subscription_at,
     subscription_at:,
     status: :active,
-    billing_time: :calendar,
+    billing_time: :calendar
   ).find_or_create_by!(
     customer:,
     external_id: SecureRandom.uuid,
-    plan:,
+    plan:
   )
 
   next if Event.where(customer_id: customer.id).exists?
@@ -111,12 +114,12 @@ Charge.create_with(
         created_at: time,
         code: sum_metric.code,
         properties: {
-          custom_field: 10,
+          custom_field: 10
         },
         metadata: {
           user_agent: 'Lago Python v0.1.5',
-          ip_address: Faker::Internet.ip_v4_address,
-        },
+          ip_address: Faker::Internet.ip_v4_address
+        }
       )
     end
 
@@ -133,8 +136,8 @@ Charge.create_with(
         code: count_metric.code,
         metadata: {
           user_agent: 'Lago Python v0.1.5',
-          ip_address: Faker::Internet.ip_v4_address,
-        },
+          ip_address: Faker::Internet.ip_v4_address
+        }
       )
     end
   end
@@ -154,8 +157,8 @@ Charge.create_with(
       properties: {},
       metadata: {
         user_agent: 'Lago Python v0.1.5',
-        ip_address: Faker::Internet.ip_v4_address,
-      },
+        ip_address: Faker::Internet.ip_v4_address
+      }
     )
   end
 
@@ -174,8 +177,8 @@ Charge.create_with(
       properties: {},
       metadata: {
         user_agent: 'Lago Python v0.1.5',
-        ip_address: Faker::Internet.ip_v4_address,
-      },
+        ip_address: Faker::Internet.ip_v4_address
+      }
     )
   end
 end
@@ -193,7 +196,7 @@ wallet = Wallet.create!(
   credits_balance: BigDecimal('100.00'),
   credits_ongoing_balance: BigDecimal('100.00'),
   credits_ongoing_usage_balance: BigDecimal('100.00'),
-  currency: 'EUR',
+  currency: 'EUR'
 )
 
 Wallet.create!(
@@ -209,7 +212,7 @@ Wallet.create!(
   credits_ongoing_balance: BigDecimal('86.00'),
   credits_ongoing_usage_balance: BigDecimal('86.00'),
   consumed_credits: BigDecimal('114.00'),
-  currency: 'EUR',
+  currency: 'EUR'
 )
 
 3.times do
@@ -220,7 +223,7 @@ Wallet.create!(
     amount: BigDecimal('10.00'),
     credit_amount: BigDecimal('10.00'),
     settled_at: Time.zone.now,
-    transaction_status: :invoiced,
+    transaction_status: :invoiced
   )
 end
 
@@ -238,12 +241,12 @@ organization.customers.find_each do |customer|
       created_at: time,
       code: sum_metric.code,
       properties: {
-        custom_field: 10,
+        custom_field: 10
       },
       metadata: {
         user_agent: 'Lago Python v0.1.5',
-        ip_address: Faker::Internet.ip_v4_address,
-      },
+        ip_address: Faker::Internet.ip_v4_address
+      }
     )
   end
 end

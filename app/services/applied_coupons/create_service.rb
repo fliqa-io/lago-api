@@ -2,10 +2,6 @@
 
 module AppliedCoupons
   class CreateService < BaseService
-    def self.call(...)
-      new(...).call
-    end
-
     def initialize(customer:, coupon:, params:)
       @customer = customer
       @coupon = coupon
@@ -26,16 +22,14 @@ module AppliedCoupons
         percentage_rate: params[:percentage_rate] || coupon.percentage_rate,
         frequency: params[:frequency] || coupon.frequency,
         frequency_duration: params[:frequency_duration] || coupon.frequency_duration,
-        frequency_duration_remaining: params[:frequency_duration] || coupon.frequency_duration,
+        frequency_duration_remaining: params[:frequency_duration] || coupon.frequency_duration
       )
 
       if coupon.fixed_amount?
         ActiveRecord::Base.transaction do
-          currency_result = Customers::UpdateService.new(nil).update_currency(
-            customer:,
-            currency: params[:amount_currency] || coupon.amount_currency,
-          )
-          return currency_result unless currency_result.success?
+          Customers::UpdateCurrencyService
+            .call(customer:, currency: params[:amount_currency] || coupon.amount_currency)
+            .raise_if_error!
 
           applied_coupon.save!
         end
@@ -48,6 +42,8 @@ module AppliedCoupons
       result
     rescue ActiveRecord::RecordInvalid => e
       result.record_validation_failure!(record: e.record)
+    rescue BaseService::FailedResult => e
+      e.result
     end
 
     private
@@ -107,8 +103,8 @@ module AppliedCoupons
           customer_id: applied_coupon.customer.id,
           coupon_code: applied_coupon.coupon.code,
           coupon_name: applied_coupon.coupon.name,
-          organization_id: applied_coupon.coupon.organization_id,
-        },
+          organization_id: applied_coupon.coupon.organization_id
+        }
       )
     end
   end

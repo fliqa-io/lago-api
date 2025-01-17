@@ -19,9 +19,9 @@ module Charges
         boundaries: {
           from_datetime: boundaries[:charges_from_datetime],
           to_datetime: boundaries[:charges_to_datetime],
-          charges_duration: boundaries[:charges_duration],
+          charges_duration: boundaries[:charges_duration]
         },
-        filters: aggregation_filters,
+        filters: aggregation_filters
       )
 
       aggregator.aggregate(options: aggregation_options)
@@ -37,7 +37,7 @@ module Charges
     def aggregation_options
       {
         free_units_per_events: properties['free_units_per_events'].to_i,
-        free_units_per_total_aggregation: BigDecimal(properties['free_units_per_total_aggregation'] || 0),
+        free_units_per_total_aggregation: BigDecimal(properties['free_units_per_total_aggregation'] || 0)
       }
     end
 
@@ -45,14 +45,14 @@ module Charges
       filters = {event:}
 
       properties = charge_filter&.properties || charge.properties
-      if charge.standard? && properties['grouped_by'].present?
+      if charge.supports_grouped_by? && properties['grouped_by'].present?
         filters[:grouped_by_values] = properties['grouped_by'].index_with do |grouped_by|
           event.properties[grouped_by]
         end
       end
 
       if charge_filter.present?
-        result = ChargeFilters::MatchingAndIgnoredService.call(filter: charge_filter)
+        result = ChargeFilters::MatchingAndIgnoredService.call(charge:, filter: charge_filter)
         filters[:charge_filter] = charge_filter if charge_filter.persisted?
         filters[:matching_filters] = result.matching_filters
         filters[:ignored_filters] = result.ignored_filters

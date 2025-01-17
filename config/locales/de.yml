@@ -11,18 +11,18 @@ de:
     - Sa
     abbr_month_names:
     -
-    - Jan
-    - Feb
-    - Mär
-    - Apr
+    - Jan.
+    - Feb.
+    - Mär.
+    - Apr.
     - Mai
-    - Jun
-    - Jul
-    - Aug
-    - Sep
-    - Okt
-    - Nov
-    - Dez
+    - Jun.
+    - Jul.
+    - Aug.
+    - Sep.
+    - Okt.
+    - Nov.
+    - Dez.
     day_names:
     - Sonntag
     - Montag
@@ -32,7 +32,7 @@ de:
     - Freitag
     - Samstag
     formats:
-      default: "%d. %b. %Y"
+      default: "%d. %b %Y"
     month_names:
     -
     - Januar

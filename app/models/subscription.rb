@@ -12,7 +12,10 @@ class Subscription < ApplicationRecord
   has_many :events
   has_many :invoice_subscriptions
   has_many :invoices, through: :invoice_subscriptions
+  has_many :integration_resources, as: :syncable
   has_many :fees
+  has_many :daily_usages
+  has_one :lifetime_usage, autosave: true
 
   validates :external_id, :billing_time, presence: true
   validate :validate_external_id, on: :create
@@ -21,7 +24,7 @@ class Subscription < ApplicationRecord
     :pending,
     :active,
     :terminated,
-    :canceled,
+    :canceled
   ].freeze
 
   BILLING_TIME = %i[
@@ -52,6 +55,11 @@ class Subscription < ApplicationRecord
 
   def mark_as_active!(timestamp = Time.current)
     self.started_at ||= timestamp
+    self.lifetime_usage ||= previous_subscription&.lifetime_usage || build_lifetime_usage(
+      organization:,
+      recalculate_current_usage: false,
+      recalculate_invoiced_usage: false
+    )
     active!
   end
 
@@ -112,7 +120,7 @@ class Subscription < ApplicationRecord
   end
 
   def already_billed?
-    fees.subscription_kind.any?
+    fees.subscription.any?
   end
 
   def starting_in_the_future?
@@ -149,7 +157,7 @@ class Subscription < ApplicationRecord
     number_od_days = Utils::Datetime.date_diff_with_timezone(
       from_datetime,
       to_datetime,
-      customer.applicable_timezone,
+      customer.applicable_timezone
     )
 
     return number_od_days unless terminated? && upgraded?
@@ -158,4 +166,56 @@ class Subscription < ApplicationRecord
 
     number_od_days.negative? ? 0 : number_od_days
   end
+
+  def should_sync_hubspot_subscription?
+    customer.integration_customers.hubspot_kind.any? { |c| c.integration.sync_subscriptions }
+  end
+
+  def terminated_at?(timestamp)
+    return false unless terminated?
+    return false if terminated_at.nil? || timestamp.nil?
+
+    # TODO: should be cleaned up to only use Time
+    timestamp = timestamp.to_time if [Date, DateTime, String].include?(timestamp.class)
+    timestamp = Time.zone.at(timestamp) if timestamp.is_a?(Integer)
+
+    terminated_at.round <= timestamp.round
+  end
 end
+
+# == Schema Information
+#
+# Table name: subscriptions
+#
+#  id                       :uuid             not null, primary key
+#  billing_time             :integer          default("calendar"), not null
+#  canceled_at              :datetime
+#  ending_at                :datetime
+#  name                     :string
+#  started_at               :datetime
+#  status                   :integer          not null
+#  subscription_at          :datetime
+#  terminated_at            :datetime
+#  trial_ended_at           :datetime
+#  created_at               :datetime         not null
+#  updated_at               :datetime         not null
+#  customer_id              :uuid             not null
+#  external_id              :string           not null
+#  plan_id                  :uuid             not null
+#  previous_subscription_id :uuid
+#
+# Indexes
+#
+#  index_subscriptions_on_customer_id                          (customer_id)
+#  index_subscriptions_on_external_id                          (external_id)
+#  index_subscriptions_on_plan_id                              (plan_id)
+#  index_subscriptions_on_previous_subscription_id_and_status  (previous_subscription_id,status)
+#  index_subscriptions_on_started_at                           (started_at)
+#  index_subscriptions_on_started_at_and_ending_at             (started_at,ending_at)
+#  index_subscriptions_on_status                               (status)
+#
+# Foreign Keys
+#
+#  fk_rails_...  (customer_id => customers.id)
+#  fk_rails_...  (plan_id => plans.id)
+#

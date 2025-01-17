@@ -62,7 +62,7 @@ type AddOn {
   deletedAt: ISO8601DateTime
   description: String
   id: ID!
-  integrationMappings: [Mapping!]
+  integrationMappings(integrationId: ID): [Mapping!]
   invoiceDisplayName: String
   name: String!
   organization: Organization
@@ -70,8 +70,18 @@ type AddOn {
   updatedAt: ISO8601DateTime!
 }
 
+"""
+AddOnCollection type
+"""
 type AddOnCollection {
+  """
+  A collection of paginated AddOnCollection
+  """
   collection: [AddOn!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -100,7 +110,7 @@ type AdyenProvider {
   hmacKey: String
   id: ID!
   livePrefix: String
-  merchantAccount: String!
+  merchantAccount: String
   name: String!
   successRedirectUrl: String
 }
@@ -113,6 +123,67 @@ enum AggregationTypeEnum {
   sum_agg
   unique_count_agg
   weighted_sum_agg
+}
+
+type AnrokBreakdownObject {
+  enumedTaxCode: InvoiceAppliedTaxOnWholeInvoiceCodeEnum
+  name: String
+  rate: Float
+  taxAmount: BigInt
+  type: String
+}
+
+type AnrokCustomer {
+  externalAccountId: String
+  externalCustomerId: String
+  id: ID!
+  integrationCode: String
+  integrationId: ID
+  integrationType: IntegrationTypeEnum
+  syncWithProvider: Boolean
+}
+
+type AnrokFeeObject {
+  amountCents: BigInt
+  itemCode: String
+  itemId: String
+  taxAmountCents: BigInt
+  taxBreakdown: [AnrokBreakdownObject!]
+}
+
+"""
+AnrokFeeObjectCollection type
+"""
+type AnrokFeeObjectCollection {
+  """
+  A collection of paginated AnrokFeeObjectCollection
+  """
+  collection: [AnrokFeeObject!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: CollectionMetadata!
+}
+
+type AnrokIntegration {
+  apiKey: String!
+  code: String!
+  externalAccountId: String
+  failedInvoicesCount: Int
+  hasMappingsConfigured: Boolean
+  id: ID!
+  name: String!
+}
+
+type ApiKey {
+  createdAt: ISO8601DateTime!
+  expiresAt: ISO8601DateTime
+  id: ID!
+  lastUsedAt: ISO8601DateTime
+  name: String
+  permissions: JSON!
+  value: String!
 }
 
 type AppliedAddOn {
@@ -142,7 +213,7 @@ interface AppliedTax {
   amountCurrency: CurrencyEnum!
   createdAt: ISO8601DateTime!
   id: ID!
-  tax: Tax!
+  tax: Tax
   taxCode: String!
   taxDescription: String
   taxName: String!
@@ -175,21 +246,34 @@ type BillableMetric {
   deletedAt: ISO8601DateTime
   description: String
   draftInvoicesCount: Int!
+  expression: String
   fieldName: String
   filters: [BillableMetricFilter!]
   id: ID!
-  integrationMappings: [Mapping!]
+  integrationMappings(integrationId: ID): [Mapping!]
   name: String!
   organization: Organization
   plansCount: Int!
   recurring: Boolean!
+  roundingFunction: RoundingFunctionEnum
+  roundingPrecision: Int
   subscriptionsCount: Int!
   updatedAt: ISO8601DateTime!
   weightedInterval: WeightedIntervalEnum
 }
 
+"""
+BillableMetricCollection type
+"""
 type BillableMetricCollection {
+  """
+  A collection of paginated BillableMetricCollection
+  """
   collection: [BillableMetric!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -228,6 +312,7 @@ type Charge {
   payInAdvance: Boolean!
   properties: Properties
   prorated: Boolean!
+  regroupPaidFees: RegroupPaidFeesEnum
   taxes: [Tax!]
   updatedAt: ISO8601DateTime!
 }
@@ -273,11 +358,13 @@ input ChargeInput {
   payInAdvance: Boolean
   properties: PropertiesInput
   prorated: Boolean
+  regroupPaidFees: RegroupPaidFeesEnum
   taxCodes: [String!]
 }
 
 enum ChargeModelEnum {
   custom
+  dynamic
   graduated
   graduated_percentage
   package
@@ -289,7 +376,7 @@ enum ChargeModelEnum {
 input ChargeOverridesInput {
   billableMetricId: ID!
   filters: [ChargeFilterInput!]
-  id: ID!
+  id: ID
   invoiceDisplayName: String
   minAmountCents: BigInt
   properties: PropertiesInput
@@ -303,6 +390,7 @@ type ChargeUsage {
   eventsCount: Int!
   filters: [ChargeFilterUsage!]
   groupedUsage: [GroupedChargeUsage!]!
+  id: ID!
   units: Float!
 }
 
@@ -313,17 +401,48 @@ type CollectionMapping {
   id: ID!
   integrationId: ID!
   mappingType: MappingTypeEnum!
+  taxCode: String
+  taxNexus: String
+  taxType: String
 }
 
+"""
+CollectionMappingCollection type
+"""
 type CollectionMappingCollection {
+  """
+  A collection of paginated CollectionMappingCollection
+  """
   collection: [CollectionMapping!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
+"""
+Type for CollectionMetadataType
+"""
 type CollectionMetadata {
+  """
+  Current Page of loaded data
+  """
   currentPage: Int!
+
+  """
+  The number of items per page
+  """
   limitValue: Int!
+
+  """
+  The total number of items to be paginated
+  """
   totalCount: Int!
+
+  """
+  The total number of pages in the pagination
+  """
   totalPages: Int!
 }
 
@@ -1472,7 +1591,7 @@ enum CountryCode {
   TO
 
   """
-  Turkey
+  Türkiye
   """
   TR
 
@@ -1628,8 +1747,18 @@ type Coupon {
   updatedAt: ISO8601DateTime!
 }
 
+"""
+CouponCollection type
+"""
 type CouponCollection {
+  """
+  A collection of paginated CouponCollection
+  """
   collection: [Coupon!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -1682,8 +1811,35 @@ input CreateAdjustedFeeInput {
   clientMutationId: String
   feeId: ID!
   invoiceDisplayName: String
-  unitAmountCents: BigInt
+  unitPreciseAmount: String
   units: Float
+}
+
+"""
+Autogenerated input type of CreateAnrokIntegration
+"""
+input CreateAnrokIntegrationInput {
+  apiKey: String!
+
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String!
+  connectionId: String!
+  name: String!
+}
+
+"""
+Autogenerated input type of CreateApiKey
+"""
+input CreateApiKeyInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  name: String
+  permissions: JSON
 }
 
 """
@@ -1716,11 +1872,13 @@ input CreateBillableMetricInput {
   clientMutationId: String
   code: String!
   description: String!
+  expression: String
   fieldName: String
   filters: [BillableMetricFiltersInput!]
-  group: JSON
   name: String!
   recurring: Boolean
+  roundingFunction: RoundingFunctionEnum
+  roundingPrecision: Int
   weightedInterval: WeightedIntervalEnum
 }
 
@@ -1779,27 +1937,44 @@ input CreateCustomerInput {
   clientMutationId: String
   country: CountryCode
   currency: CurrencyEnum
+  customerType: CustomerTypeEnum
   email: String
   externalId: String!
   externalSalesforceId: String
+  finalizeZeroAmountInvoice: FinalizeZeroAmountInvoiceEnum
+  firstname: String
+  integrationCustomers: [IntegrationCustomerInput!]
   invoiceGracePeriod: Int
+  lastname: String
   legalName: String
   legalNumber: String
   logoUrl: String
   metadata: [CustomerMetadataInput!]
-  name: String!
+  name: String
   netPaymentTerm: Int
-  netsuiteCustomer: IntegrationCustomerInput
   paymentProvider: ProviderTypeEnum
   paymentProviderCode: String
   phone: String
   providerCustomer: ProviderCustomerInput
+  shippingAddress: CustomerAddressInput
   state: String
   taxCodes: [String!]
   taxIdentificationNumber: String
   timezone: TimezoneEnum
   url: String
   zipcode: String
+}
+
+"""
+Autogenerated input type of CreateCustomerPortalWalletTransaction
+"""
+input CreateCustomerPortalWalletTransactionInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  paidCredits: String
+  walletId: ID!
 }
 
 """
@@ -1814,6 +1989,7 @@ input CreateCustomerWalletInput {
   customerId: ID!
   expirationAt: ISO8601DateTime
   grantedCredits: String!
+  invoiceRequiresSuccessfulPayment: Boolean
   name: String
   paidCredits: String!
   rateAmount: String!
@@ -1829,9 +2005,70 @@ input CreateCustomerWalletTransactionInput {
   """
   clientMutationId: String
   grantedCredits: String
+  invoiceRequiresSuccessfulPayment: Boolean
   paidCredits: String
   voidedCredits: String
   walletId: ID!
+}
+
+"""
+Autogenerated input type of CreateCreditNotesDataExport
+"""
+input CreateDataExportsCreditNotesInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  filters: DataExportCreditNoteFiltersInput!
+  format: DataExportFormatTypeEnum!
+  resourceType: CreditNoteExportTypeEnum!
+}
+
+"""
+Autogenerated input type of CreateInvoicesDataExport
+"""
+input CreateDataExportsInvoicesInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  filters: DataExportInvoiceFiltersInput!
+  format: DataExportFormatTypeEnum!
+  resourceType: InvoiceExportTypeEnum!
+}
+
+"""
+Autogenerated input type of CreateDunningCampaign
+"""
+input CreateDunningCampaignInput {
+  appliedToOrganization: Boolean!
+
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String!
+  daysBetweenAttempts: Int!
+  description: String
+  maxAttempts: Int!
+  name: String!
+  thresholds: [DunningCampaignThresholdInput!]!
+}
+
+"""
+Autogenerated input type of CreateHubspotIntegration
+"""
+input CreateHubspotIntegrationInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String!
+  connectionId: String!
+  defaultTargetedObject: HubspotTargetedObjectsEnum!
+  name: String!
+  syncInvoices: Boolean
+  syncSubscriptions: Boolean
 }
 
 """
@@ -1847,6 +2084,9 @@ input CreateIntegrationCollectionMappingInput {
   externalName: String
   integrationId: ID!
   mappingType: MappingTypeEnum!
+  taxCode: String
+  taxNexus: String
+  taxType: String
 }
 
 """
@@ -1857,7 +2097,7 @@ input CreateIntegrationMappingInput {
   A unique identifier for the client performing the mutation.
   """
   clientMutationId: String
-  externalAccountCode: String!
+  externalAccountCode: String
   externalId: String!
   externalName: String
   integrationId: ID!
@@ -1875,6 +2115,22 @@ input CreateInviteInput {
   clientMutationId: String
   email: String!
   role: MembershipRole!
+}
+
+"""
+Autogenerated input type of CreateInvoiceCustomSection
+"""
+input CreateInvoiceCustomSectionInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String!
+  description: String
+  details: String
+  displayName: String
+  name: String!
+  selected: Boolean
 }
 
 """
@@ -1905,11 +2161,12 @@ input CreateNetsuiteIntegrationInput {
   code: String!
   connectionId: String!
   name: String!
-  scriptEndpointUrl: String
+  scriptEndpointUrl: String!
   syncCreditNotes: Boolean
   syncInvoices: Boolean
   syncPayments: Boolean
-  syncSalesOrders: Boolean
+  tokenId: String!
+  tokenSecret: String!
 }
 
 """
@@ -1939,7 +2196,7 @@ input CreatePasswordResetInput {
 }
 
 """
-Autogenerated return type of CreatePasswordReset
+Autogenerated return type of CreatePasswordReset.
 """
 type CreatePasswordResetPayload {
   """
@@ -1971,12 +2228,32 @@ input CreatePlanInput {
   payInAdvance: Boolean!
   taxCodes: [String!]
   trialPeriod: Float
+  usageThresholds: [UsageThresholdInput!]
 }
 
 input CreateRecurringTransactionRuleInput {
+  grantedCredits: String
   interval: RecurringTransactionIntervalEnum
-  ruleType: RecurringTransactionRuleTypeEnum!
+  invoiceRequiresSuccessfulPayment: Boolean
+  method: RecurringTransactionMethodEnum
+  paidCredits: String
+  startedAt: ISO8601DateTime
+  targetOngoingBalance: String
   thresholdCredits: String
+  trigger: RecurringTransactionTriggerEnum!
+}
+
+"""
+Autogenerated input type of CreateSalesforceIntegration
+"""
+input CreateSalesforceIntegrationInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String!
+  instanceId: String!
+  name: String!
 }
 
 """
@@ -2000,6 +2277,22 @@ input CreateSubscriptionInput {
 }
 
 """
+Autogenerated input type of CreateXeroIntegration
+"""
+input CreateXeroIntegrationInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String!
+  connectionId: String!
+  name: String!
+  syncCreditNotes: Boolean
+  syncInvoices: Boolean
+  syncPayments: Boolean
+}
+
+"""
 CreditNote
 """
 type CreditNote {
@@ -2017,8 +2310,11 @@ type CreditNote {
   currency: CurrencyEnum!
   customer: Customer!
   description: String
+  errorDetails: [ErrorDetail!]
+  externalIntegrationId: String
   fileUrl: String
   id: ID!
+  integrationSyncable: Boolean!
   invoice: Invoice
   issuingDate: ISO8601Date!
   items: [CreditNoteItem!]!
@@ -2029,6 +2325,8 @@ type CreditNote {
   refundedAt: ISO8601DateTime
   sequentialId: ID!
   subTotalExcludingTaxesAmountCents: BigInt!
+  taxProviderId: String
+  taxProviderSyncable: Boolean!
   taxesAmountCents: BigInt!
   taxesRate: Float!
   totalAmountCents: BigInt!
@@ -2043,7 +2341,7 @@ type CreditNoteAppliedTax implements AppliedTax {
   createdAt: ISO8601DateTime!
   creditNote: CreditNote!
   id: ID!
-  tax: Tax!
+  tax: Tax
   taxCode: String!
   taxDescription: String
   taxName: String!
@@ -2051,8 +2349,18 @@ type CreditNoteAppliedTax implements AppliedTax {
   updatedAt: ISO8601DateTime!
 }
 
+"""
+CreditNoteCollection type
+"""
 type CreditNoteCollection {
+  """
+  A collection of paginated CreditNoteCollection
+  """
   collection: [CreditNote!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -2077,6 +2385,11 @@ type CreditNoteEstimate {
   subTotalExcludingTaxesAmountCents: BigInt!
   taxesAmountCents: BigInt!
   taxesRate: Float!
+}
+
+enum CreditNoteExportTypeEnum {
+  credit_note_items
+  credit_notes
 }
 
 type CreditNoteItem {
@@ -2182,6 +2495,11 @@ enum CurrencyEnum {
   Bulgarian Lev
   """
   BGN
+
+  """
+  Bahraini Dinar
+  """
+  BHD
 
   """
   Burundian Franc
@@ -2397,6 +2715,11 @@ enum CurrencyEnum {
   Indian Rupee
   """
   INR
+
+  """
+  Iranian Rial
+  """
+  IRR
 
   """
   Icelandic Króna
@@ -2817,6 +3140,7 @@ type CurrentOrganization {
   addressLine2: String
   adyenPaymentProviders: [AdyenProvider!]
   apiKey: String
+  appliedDunningCampaign: DunningCampaign
   billingConfiguration: OrganizationBillingConfiguration
   city: String
   country: CountryCode
@@ -2827,14 +3151,16 @@ type CurrentOrganization {
   email: String
   emailSettings: [EmailSettingsEnum!]
   euTaxManagement: Boolean!
+  finalizeZeroAmountInvoice: Boolean!
   gocardlessPaymentProviders: [GocardlessProvider!]
+  hmacKey: String
   id: ID!
   legalName: String
   legalNumber: String
   logoUrl: String
   name: String!
   netPaymentTerm: Int!
-  premiumIntegrations: [IntegrationTypeEnum!]!
+  premiumIntegrations: [PremiumIntegrationTypeEnum!]!
   state: String
   stripePaymentProviders: [StripeProvider!]
   taxIdentificationNumber: String
@@ -2842,19 +3168,7 @@ type CurrentOrganization {
   """
   Query taxes of an organization
   """
-  taxes(
-    appliedToOrganization: Boolean
-    autoGenerated: Boolean
-
-    """
-    List of taxes IDs to fetch
-    """
-    ids: [ID!]
-    limit: Int
-    order: String
-    page: Int
-    searchTerm: String
-  ): [Tax!]
+  taxes(appliedToOrganization: Boolean, autoGenerated: Boolean, limit: Int, order: String, page: Int, searchTerm: String): [Tax!]
   timezone: TimezoneEnum
   updatedAt: ISO8601DateTime!
   webhookUrl: String
@@ -2873,9 +3187,16 @@ type Customer {
   activeSubscriptionsCount: Int!
   addressLine1: String
   addressLine2: String
+  anrokCustomer: AnrokCustomer
+
+  """
+  Invoice custom sections applicable to the customer
+  """
+  applicableInvoiceCustomSections: [InvoiceCustomSection!]
   applicableTimezone: TimezoneEnum!
   appliedAddOns: [AppliedAddOn!]
   appliedCoupons: [AppliedCoupon!]
+  appliedDunningCampaign: DunningCampaign
   billingConfiguration: CustomerBillingConfiguration
 
   """
@@ -2897,10 +3218,19 @@ type Customer {
   """
   creditNotesCreditsAvailableCount: Int!
   currency: CurrencyEnum
+  customerType: CustomerTypeEnum
   deletedAt: ISO8601DateTime
+  displayName: String!
   email: String
+  excludeFromDunningCampaign: Boolean!
   externalId: String!
   externalSalesforceId: String
+
+  """
+  Options for handling invoices with a zero total amount.
+  """
+  finalizeZeroAmountInvoice: FinalizeZeroAmountInvoiceEnum
+  firstname: String
 
   """
   Define if a customer has an active wallet
@@ -2911,9 +3241,23 @@ type Customer {
   Define if a customer has any credit note
   """
   hasCreditNotes: Boolean!
+
+  """
+  Define if a customer has overdue invoices
+  """
+  hasOverdueInvoices: Boolean!
+
+  """
+  Define if the customer has custom invoice custom sections selection
+  """
+  hasOverwrittenInvoiceCustomSectionsSelection: Boolean
+  hubspotCustomer: HubspotCustomer
   id: ID!
   invoiceGracePeriod: Int
   invoices: [Invoice!]
+  lastDunningCampaignAttempt: Int!
+  lastDunningCampaignAttemptAt: ISO8601DateTime
+  lastname: String
   legalName: String
   legalNumber: String
   logoUrl: String
@@ -2925,7 +3269,14 @@ type Customer {
   paymentProviderCode: String
   phone: String
   providerCustomer: ProviderCustomer
+  salesforceCustomer: SalesforceCustomer
   sequentialId: String!
+  shippingAddress: CustomerAddress
+
+  """
+  Skip invoice custom sections for the customer
+  """
+  skipInvoiceCustomSections: Boolean
   slug: String!
   state: String
 
@@ -2943,6 +3294,25 @@ type Customer {
   timezone: TimezoneEnum
   updatedAt: ISO8601DateTime!
   url: String
+  xeroCustomer: XeroCustomer
+  zipcode: String
+}
+
+type CustomerAddress {
+  addressLine1: String
+  addressLine2: String
+  city: String
+  country: CountryCode
+  state: String
+  zipcode: String
+}
+
+input CustomerAddressInput {
+  addressLine1: String
+  addressLine2: String
+  city: String
+  country: CountryCode
+  state: String
   zipcode: String
 }
 
@@ -2955,8 +3325,18 @@ input CustomerBillingConfigurationInput {
   documentLocale: String
 }
 
+"""
+CustomerCollection type
+"""
 type CustomerCollection {
+  """
+  A collection of paginated CustomerCollection
+  """
   collection: [Customer!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -2976,6 +3356,111 @@ input CustomerMetadataInput {
   value: String!
 }
 
+type CustomerPortalCustomer {
+  addressLine1: String
+  addressLine2: String
+  applicableTimezone: TimezoneEnum!
+  billingConfiguration: CustomerBillingConfiguration
+  city: String
+  country: CountryCode
+  currency: CurrencyEnum
+  customerType: CustomerTypeEnum
+  displayName: String!
+  email: String
+  firstname: String
+  id: ID!
+  lastname: String
+  legalName: String
+  legalNumber: String
+  name: String
+  premium: Boolean!
+  shippingAddress: CustomerAddress
+  state: String
+  taxIdentificationNumber: String
+  zipcode: String
+}
+
+"""
+CustomerPortalOrganization
+"""
+type CustomerPortalOrganization {
+  billingConfiguration: OrganizationBillingConfiguration
+  defaultCurrency: CurrencyEnum!
+  id: ID!
+  logoUrl: String
+  name: String!
+  premiumIntegrations: [PremiumIntegrationTypeEnum!]!
+  timezone: TimezoneEnum
+}
+
+"""
+CustomerPortalWallet
+"""
+type CustomerPortalWallet {
+  balanceCents: BigInt!
+  consumedAmountCents: BigInt!
+  consumedCredits: Float!
+  creditsBalance: Float!
+  creditsOngoingBalance: Float!
+  currency: CurrencyEnum!
+  expirationAt: ISO8601DateTime
+  id: ID!
+  lastBalanceSyncAt: ISO8601DateTime
+  name: String
+  ongoingBalanceCents: BigInt!
+  ongoingUsageBalanceCents: BigInt!
+  rateAmount: Float!
+  status: WalletStatusEnum!
+}
+
+"""
+CustomerPortalWalletCollection type
+"""
+type CustomerPortalWalletCollection {
+  """
+  A collection of paginated CustomerPortalWalletCollection
+  """
+  collection: [CustomerPortalWallet!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: CollectionMetadata!
+}
+
+type CustomerPortalWalletTransaction {
+  amount: String!
+  createdAt: ISO8601DateTime!
+  creditAmount: String!
+  id: ID!
+  settledAt: ISO8601DateTime
+  status: WalletTransactionStatusEnum!
+  transactionStatus: WalletTransactionTransactionStatusEnum!
+  transactionType: WalletTransactionTransactionTypeEnum!
+  updatedAt: ISO8601DateTime!
+  wallet: CustomerPortalWallet
+}
+
+"""
+CustomerPortalWalletTransactionCollection type
+"""
+type CustomerPortalWalletTransactionCollection {
+  """
+  A collection of paginated CustomerPortalWalletTransactionCollection
+  """
+  collection: [CustomerPortalWalletTransaction!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: CollectionMetadata!
+}
+
+enum CustomerTypeEnum {
+  company
+  individual
+}
+
 type CustomerUsage {
   amountCents: BigInt!
   chargesUsage: [ChargeUsage!]!
@@ -2985,6 +3470,60 @@ type CustomerUsage {
   taxesAmountCents: BigInt!
   toDatetime: ISO8601DateTime!
   totalAmountCents: BigInt!
+}
+
+type DataExport {
+  id: ID!
+  status: DataExportStatusEnum!
+}
+
+"""
+Export credit notes search query and filters input argument
+"""
+input DataExportCreditNoteFiltersInput {
+  amountFrom: Int
+  amountTo: Int
+  creditStatus: [CreditNoteCreditStatusEnum!]
+  currency: CurrencyEnum
+  customerExternalId: String
+
+  """
+  Uniq ID of the customer
+  """
+  customerId: ID
+  invoiceNumber: String
+  issuingDateFrom: ISO8601Date
+  issuingDateTo: ISO8601Date
+  reason: [CreditNoteReasonEnum!]
+  refundStatus: [CreditNoteRefundStatusEnum!]
+  searchTerm: String
+}
+
+enum DataExportFormatTypeEnum {
+  csv
+}
+
+"""
+Export Invoices search query and filters input argument
+"""
+input DataExportInvoiceFiltersInput {
+  currency: CurrencyEnum
+  customerExternalId: String
+  invoiceType: [InvoiceTypeEnum!]
+  issuingDateFrom: ISO8601Date
+  issuingDateTo: ISO8601Date
+  paymentDisputeLost: Boolean
+  paymentOverdue: Boolean
+  paymentStatus: [InvoicePaymentStatusTypeEnum!]
+  searchTerm: String
+  status: [InvoiceStatusTypeEnum!]
+}
+
+enum DataExportStatusEnum {
+  completed
+  failed
+  pending
+  processing
 }
 
 """
@@ -2999,7 +3538,7 @@ input DestroyAddOnInput {
 }
 
 """
-Autogenerated return type of DestroyAddOn
+Autogenerated return type of DestroyAddOn.
 """
 type DestroyAddOnPayload {
   """
@@ -3021,7 +3560,7 @@ input DestroyAdjustedFeeInput {
 }
 
 """
-Autogenerated return type of DestroyAdjustedFee
+Autogenerated return type of DestroyAdjustedFee.
 """
 type DestroyAdjustedFeePayload {
   """
@@ -3029,6 +3568,17 @@ type DestroyAdjustedFeePayload {
   """
   clientMutationId: String
   id: ID
+}
+
+"""
+Autogenerated input type of DestroyApiKey
+"""
+input DestroyApiKeyInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID!
 }
 
 """
@@ -3043,7 +3593,7 @@ input DestroyBillableMetricInput {
 }
 
 """
-Autogenerated return type of DestroyBillableMetric
+Autogenerated return type of DestroyBillableMetric.
 """
 type DestroyBillableMetricPayload {
   """
@@ -3065,7 +3615,7 @@ input DestroyCouponInput {
 }
 
 """
-Autogenerated return type of DestroyCoupon
+Autogenerated return type of DestroyCoupon.
 """
 type DestroyCouponPayload {
   """
@@ -3087,9 +3637,31 @@ input DestroyCustomerInput {
 }
 
 """
-Autogenerated return type of DestroyCustomer
+Autogenerated return type of DestroyCustomer.
 """
 type DestroyCustomerPayload {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID
+}
+
+"""
+Autogenerated input type of DestroyDunningCampaign
+"""
+input DestroyDunningCampaignInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID!
+}
+
+"""
+Autogenerated return type of DestroyDunningCampaign.
+"""
+type DestroyDunningCampaignPayload {
   """
   A unique identifier for the client performing the mutation.
   """
@@ -3109,7 +3681,7 @@ input DestroyIntegrationCollectionMappingInput {
 }
 
 """
-Autogenerated return type of DestroyIntegrationCollectionMapping
+Autogenerated return type of DestroyIntegrationCollectionMapping.
 """
 type DestroyIntegrationCollectionMappingPayload {
   """
@@ -3142,7 +3714,7 @@ input DestroyIntegrationMappingInput {
 }
 
 """
-Autogenerated return type of DestroyIntegrationMapping
+Autogenerated return type of DestroyIntegrationMapping.
 """
 type DestroyIntegrationMappingPayload {
   """
@@ -3153,9 +3725,31 @@ type DestroyIntegrationMappingPayload {
 }
 
 """
-Autogenerated return type of DestroyIntegration
+Autogenerated return type of DestroyIntegration.
 """
 type DestroyIntegrationPayload {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID
+}
+
+"""
+Autogenerated input type of DestroyInvoiceCustomSection
+"""
+input DestroyInvoiceCustomSectionInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID!
+}
+
+"""
+Autogenerated return type of DestroyInvoiceCustomSection.
+"""
+type DestroyInvoiceCustomSectionPayload {
   """
   A unique identifier for the client performing the mutation.
   """
@@ -3175,7 +3769,7 @@ input DestroyPaymentProviderInput {
 }
 
 """
-Autogenerated return type of DestroyPaymentProvider
+Autogenerated return type of DestroyPaymentProvider.
 """
 type DestroyPaymentProviderPayload {
   """
@@ -3197,7 +3791,7 @@ input DestroyPlanInput {
 }
 
 """
-Autogenerated return type of DestroyPlan
+Autogenerated return type of DestroyPlan.
 """
 type DestroyPlanPayload {
   """
@@ -3219,7 +3813,7 @@ input DestroyTaxInput {
 }
 
 """
-Autogenerated return type of DestroyTax
+Autogenerated return type of DestroyTax.
 """
 type DestroyTaxPayload {
   """
@@ -3241,7 +3835,7 @@ input DestroyWebhookEndpointInput {
 }
 
 """
-Autogenerated return type of DestroyWebhookEndpoint
+Autogenerated return type of DestroyWebhookEndpoint.
 """
 type DestroyWebhookEndpointPayload {
   """
@@ -3292,6 +3886,47 @@ input DownloadInvoiceInput {
   id: ID!
 }
 
+type DunningCampaign {
+  appliedToOrganization: Boolean!
+  code: String!
+  createdAt: ISO8601DateTime!
+  customersCount: Int!
+  daysBetweenAttempts: Int!
+  description: String
+  id: ID!
+  maxAttempts: Int!
+  name: String!
+  thresholds: [DunningCampaignThreshold!]!
+  updatedAt: ISO8601DateTime!
+}
+
+"""
+DunningCampaignCollection type
+"""
+type DunningCampaignCollection {
+  """
+  A collection of paginated DunningCampaignCollection
+  """
+  collection: [DunningCampaign!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: CollectionMetadata!
+}
+
+type DunningCampaignThreshold {
+  amountCents: BigInt!
+  currency: CurrencyEnum!
+  id: ID!
+}
+
+input DunningCampaignThresholdInput {
+  amountCents: BigInt!
+  currency: CurrencyEnum!
+  id: ID
+}
+
 """
 Organization Email Settings Values
 """
@@ -3307,28 +3942,49 @@ enum EmailSettingsEnum {
   invoice_finalized
 }
 
+enum ErrorCodesEnum {
+  not_provided
+  tax_error
+  tax_voiding_error
+}
+
+type ErrorDetail {
+  errorCode: ErrorCodesEnum!
+  errorDetails: String
+  id: ID!
+}
+
 type Event {
   apiClient: String
   billableMetricName: String
   code: String!
   customerTimezone: TimezoneEnum!
   deletedAt: ISO8601DateTime
-  externalCustomerId: String
   externalSubscriptionId: String
   id: ID!
   ipAddress: String
-  matchBillableMetric: Boolean!
-  matchCustomField: Boolean!
-  matchCustomer: Boolean!
-  matchSubscription: Boolean!
+  matchBillableMetric: Boolean
+  matchCustomField: Boolean
+  matchCustomer: Boolean
+  matchSubscription: Boolean
   payload: JSON!
-  receivedAt: ISO8601DateTime!
+  receivedAt: ISO8601DateTime
   timestamp: ISO8601DateTime
   transactionId: String
 }
 
+"""
+EventCollection type
+"""
 type EventCollection {
+  """
+  A collection of paginated EventCollection
+  """
   collection: [Event!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -3346,7 +4002,6 @@ type Fee implements InvoiceItem {
   description: String
   eventsCount: BigInt
   feeType: FeeTypesEnum!
-  group: Group
   groupedBy: JSON!
   id: ID!
   invoiceDisplayName: String
@@ -3356,6 +4011,7 @@ type Fee implements InvoiceItem {
   itemType: String!
   preciseUnitAmount: Float!
   subscription: Subscription
+  succeededAt: ISO8601DateTime
   taxesAmountCents: BigInt!
   taxesRate: Float
   trueUpFee: Fee
@@ -3408,7 +4064,7 @@ type FeeAppliedTax implements AppliedTax {
   createdAt: ISO8601DateTime!
   fee: Fee!
   id: ID!
-  tax: Tax!
+  tax: Tax
   taxCode: String!
   taxDescription: String
   taxName: String!
@@ -3438,6 +4094,30 @@ enum FeeTypesEnum {
 }
 
 """
+Create Invoice input arguments
+"""
+input FetchDraftInvoiceTaxesInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  currency: CurrencyEnum
+  customerId: ID!
+  fees: [FeeInput!]!
+}
+
+"""
+Autogenerated input type of FetchIntegrationAccounts
+"""
+input FetchIntegrationAccountsInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  integrationId: ID!
+}
+
+"""
 Autogenerated input type of FetchIntegrationItems
 """
 input FetchIntegrationItemsInput {
@@ -3449,14 +4129,13 @@ input FetchIntegrationItemsInput {
 }
 
 """
-Autogenerated input type of FetchIntegrationTaxItems
+Autogenerated input type of FinalizeAllInvoices
 """
-input FetchIntegrationTaxItemsInput {
+input FinalizeAllInvoicesInput {
   """
   A unique identifier for the client performing the mutation.
   """
   clientMutationId: String
-  integrationId: ID!
 }
 
 """
@@ -3470,6 +4149,12 @@ input FinalizeInvoiceInput {
   id: ID!
 }
 
+enum FinalizeZeroAmountInvoiceEnum {
+  finalize
+  inherit
+  skip
+}
+
 type FinalizedInvoiceCollection {
   amountCents: BigInt!
   currency: CurrencyEnum
@@ -3478,8 +4163,18 @@ type FinalizedInvoiceCollection {
   paymentStatus: InvoicePaymentStatusTypeEnum
 }
 
+"""
+FinalizedInvoiceCollectionCollection type
+"""
 type FinalizedInvoiceCollectionCollection {
+  """
+  A collection of paginated FinalizedInvoiceCollectionCollection
+  """
   collection: [FinalizedInvoiceCollection!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -3495,7 +4190,7 @@ input GenerateCustomerPortalUrlInput {
 }
 
 """
-Autogenerated return type of GenerateCustomerPortalUrl
+Autogenerated return type of GenerateCustomerPortalUrl.
 """
 type GenerateCustomerPortalUrlPayload {
   """
@@ -3507,7 +4202,7 @@ type GenerateCustomerPortalUrlPayload {
 
 type GocardlessProvider {
   code: String!
-  hasAccessToken: Boolean!
+  hasAccessToken: Boolean
   id: ID!
   name: String!
   successRedirectUrl: String
@@ -3580,19 +4275,23 @@ input GraduatedRangeInput {
 type GrossRevenue {
   amountCents: BigInt
   currency: CurrencyEnum
+  invoicesCount: BigInt!
   month: ISO8601DateTime!
 }
 
+"""
+GrossRevenueCollection type
+"""
 type GrossRevenueCollection {
+  """
+  A collection of paginated GrossRevenueCollection
+  """
   collection: [GrossRevenue!]!
-  metadata: CollectionMetadata!
-}
 
-type Group {
-  deletedAt: ISO8601DateTime
-  id: ID!
-  key: String
-  value: String!
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: CollectionMetadata!
 }
 
 type GroupedChargeUsage {
@@ -3600,32 +4299,74 @@ type GroupedChargeUsage {
   eventsCount: Int!
   filters: [ChargeFilterUsage!]
   groupedBy: JSON
+  id: ID!
   units: Float!
+}
+
+type HubspotCustomer {
+  externalCustomerId: String
+  id: ID!
+  integrationCode: String
+  integrationId: ID
+  integrationType: IntegrationTypeEnum
+  syncWithProvider: Boolean
+  targetedObject: HubspotTargetedObjectsEnum
+}
+
+type HubspotIntegration {
+  code: String!
+  connectionId: ID!
+  defaultTargetedObject: HubspotTargetedObjectsEnum!
+  id: ID!
+  invoicesObjectTypeId: String
+  name: String!
+  portalId: String
+  subscriptionsObjectTypeId: String
+  syncInvoices: Boolean
+  syncSubscriptions: Boolean
+}
+
+enum HubspotTargetedObjectsEnum {
+  companies
+  contacts
 }
 
 """
 An ISO 8601-encoded date
 """
-scalar ISO8601Date
+scalar ISO8601Date @specifiedBy(url: "https://tools.ietf.org/html/rfc3339")
 
 """
 An ISO 8601-encoded datetime
 """
-scalar ISO8601DateTime
+scalar ISO8601DateTime @specifiedBy(url: "https://tools.ietf.org/html/rfc3339")
 
-union Integration = NetsuiteIntegration
+union Integration = AnrokIntegration | HubspotIntegration | NetsuiteIntegration | OktaIntegration | SalesforceIntegration | XeroIntegration
 
+"""
+IntegrationCollection type
+"""
 type IntegrationCollection {
+  """
+  A collection of paginated IntegrationCollection
+  """
   collection: [Integration!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
 input IntegrationCustomerInput {
   externalCustomerId: String
+  id: ID
   integrationCode: String
+  integrationId: ID
   integrationType: IntegrationTypeEnum
   subsidiaryId: String
   syncWithProvider: Boolean
+  targetedObject: HubspotTargetedObjectsEnum
 }
 
 type IntegrationItem {
@@ -3637,18 +4378,38 @@ type IntegrationItem {
   itemType: IntegrationItemTypeEnum!
 }
 
+"""
+IntegrationItemCollection type
+"""
 type IntegrationItemCollection {
+  """
+  A collection of paginated IntegrationItemCollection
+  """
   collection: [IntegrationItem!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
 enum IntegrationItemTypeEnum {
+  account
   standard
   tax
 }
 
 enum IntegrationTypeEnum {
+  anrok
+  api_permissions
+  auto_dunning
+  hubspot
   netsuite
+  okta
+  progressive_billing
+  revenue_analytics
+  salesforce
+  xero
 }
 
 type Invite {
@@ -3663,8 +4424,18 @@ type Invite {
   token: String!
 }
 
+"""
+InviteCollection type
+"""
 type InviteCollection {
+  """
+  A collection of paginated InviteCollection
+  """
   collection: [Invite!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -3679,6 +4450,8 @@ Invoice
 """
 type Invoice {
   appliedTaxes: [InvoiceAppliedTax!]
+  associatedActiveWalletPresent: Boolean!
+  availableToCreditAmountCents: BigInt!
   chargeAmountCents: BigInt!
   couponsAmountCents: BigInt!
   createdAt: ISO8601DateTime!
@@ -3687,10 +4460,17 @@ type Invoice {
   creditableAmountCents: BigInt!
   currency: CurrencyEnum
   customer: Customer!
+  errorDetails: [ErrorDetail!]
+  externalHubspotIntegrationId: String
+  externalIntegrationId: String
+  externalSalesforceIntegrationId: String
   fees: [Fee!]
   feesAmountCents: BigInt!
   fileUrl: String
   id: ID!
+  integrationHubspotSyncable: Boolean!
+  integrationSalesforceSyncable: Boolean!
+  integrationSyncable: Boolean!
   invoiceSubscriptions: [InvoiceSubscription!]
   invoiceType: InvoiceTypeEnum!
   issuingDate: ISO8601Date!
@@ -3699,14 +4479,18 @@ type Invoice {
   paymentDisputeLosable: Boolean!
   paymentDisputeLostAt: ISO8601DateTime
   paymentDueDate: ISO8601Date!
+  paymentOverdue: Boolean!
   paymentStatus: InvoicePaymentStatusTypeEnum!
   prepaidCreditAmountCents: BigInt!
+  progressiveBillingCreditAmountCents: BigInt!
   refundableAmountCents: BigInt!
   sequentialId: ID!
   status: InvoiceStatusTypeEnum!
   subTotalExcludingTaxesAmountCents: BigInt!
   subTotalIncludingTaxesAmountCents: BigInt!
   subscriptions: [Subscription!]
+  taxProviderVoidable: Boolean!
+  taxStatus: InvoiceTaxStatusTypeEnum
   taxesAmountCents: BigInt!
   taxesRate: Float!
   totalAmountCents: BigInt!
@@ -3718,21 +4502,75 @@ type Invoice {
 type InvoiceAppliedTax implements AppliedTax {
   amountCents: BigInt!
   amountCurrency: CurrencyEnum!
+  appliedOnWholeInvoice: Boolean!
   createdAt: ISO8601DateTime!
+  enumedTaxCode: InvoiceAppliedTaxOnWholeInvoiceCodeEnum
   feesAmountCents: BigInt!
   id: ID!
   invoice: Invoice!
-  tax: Tax!
+  tax: Tax
   taxCode: String!
   taxDescription: String
   taxName: String!
   taxRate: Float!
+  taxableAmountCents: BigInt!
   updatedAt: ISO8601DateTime!
 }
 
+enum InvoiceAppliedTaxOnWholeInvoiceCodeEnum {
+  customer_exempt
+  juris_has_no_tax
+  juris_not_taxed
+  not_collecting
+  reverse_charge
+  transaction_exempt
+  unknown_taxation
+}
+
+"""
+InvoiceCollection type
+"""
 type InvoiceCollection {
+  """
+  A collection of paginated InvoiceCollection
+  """
   collection: [Invoice!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
+}
+
+type InvoiceCustomSection {
+  code: String!
+  description: String
+  details: String
+  displayName: String
+  id: ID!
+  name: String!
+  organization: Organization
+  selected: Boolean!
+}
+
+"""
+InvoiceCustomSectionCollection type
+"""
+type InvoiceCustomSectionCollection {
+  """
+  A collection of paginated InvoiceCustomSectionCollection
+  """
+  collection: [InvoiceCustomSection!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: CollectionMetadata!
+}
+
+enum InvoiceExportTypeEnum {
+  invoice_fees
+  invoices
 }
 
 """
@@ -3741,7 +4579,6 @@ Invoice Item
 interface InvoiceItem {
   amountCents: BigInt!
   amountCurrency: CurrencyEnum!
-  group: Group
   id: ID!
   itemCode: String!
   itemName: String!
@@ -3775,8 +4612,13 @@ enum InvoicePaymentStatusTypeEnum {
 }
 
 enum InvoiceStatusTypeEnum {
+  closed
   draft
+  failed
   finalized
+  generating
+  open
+  pending
   voided
 }
 
@@ -3795,10 +4637,18 @@ type InvoiceSubscription {
   totalAmountCents: BigInt!
 }
 
+enum InvoiceTaxStatusTypeEnum {
+  failed
+  pending
+  succeeded
+}
+
 enum InvoiceTypeEnum {
   add_on
+  advance_charges
   credit
   one_off
+  progressive_billing
   subscription
 }
 
@@ -3809,8 +4659,18 @@ type InvoicedUsage {
   month: ISO8601DateTime!
 }
 
+"""
+InvoicedUsageCollection type
+"""
 type InvoicedUsageCollection {
+  """
+  A collection of paginated InvoicedUsageCollection
+  """
   collection: [InvoicedUsage!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -3858,7 +4718,7 @@ enum MappableTypeEnum {
 }
 
 type Mapping {
-  externalAccountCode: String!
+  externalAccountCode: String
   externalId: String!
   externalName: String
   id: ID!
@@ -3867,13 +4727,25 @@ type Mapping {
   mappableType: MappableTypeEnum!
 }
 
+"""
+MappingCollection type
+"""
 type MappingCollection {
+  """
+  A collection of paginated MappingCollection
+  """
   collection: [Mapping!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
 enum MappingTypeEnum {
+  account
   coupon
+  credit_note
   fallback_item
   minimum_commitment
   prepaid_credit
@@ -3887,15 +4759,25 @@ type Membership {
   organization: Organization!
   permissions: Permissions!
   revokedAt: ISO8601DateTime!
-  role: MembershipRole
+  role: MembershipRole!
   status: MembershipStatus!
   updatedAt: ISO8601DateTime!
   user: User!
 }
 
+"""
+MembershipCollection type
+"""
 type MembershipCollection {
+  """
+  A collection of paginated MembershipCollection
+  """
   collection: [Membership!]!
-  metadata: CollectionMetadata!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: Metadata!
 }
 
 enum MembershipRole {
@@ -3909,14 +4791,51 @@ enum MembershipStatus {
   revoked
 }
 
+"""
+Type for CollectionMetadataType
+"""
+type Metadata {
+  adminCount: Int!
+
+  """
+  Current Page of loaded data
+  """
+  currentPage: Int!
+
+  """
+  The number of items per page
+  """
+  limitValue: Int!
+
+  """
+  The total number of items to be paginated
+  """
+  totalCount: Int!
+
+  """
+  The total number of pages in the pagination
+  """
+  totalPages: Int!
+}
+
 type Mrr {
   amountCents: BigInt
   currency: CurrencyEnum
   month: ISO8601DateTime!
 }
 
+"""
+MrrCollection type
+"""
 type MrrCollection {
+  """
+  A collection of paginated MrrCollection
+  """
   collection: [Mrr!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -3982,6 +4901,26 @@ type Mutation {
   ): Fee
 
   """
+  Create Anrok integration
+  """
+  createAnrokIntegration(
+    """
+    Parameters for CreateAnrokIntegration
+    """
+    input: CreateAnrokIntegrationInput!
+  ): AnrokIntegration
+
+  """
+  Creates a new API key
+  """
+  createApiKey(
+    """
+    Parameters for CreateApiKey
+    """
+    input: CreateApiKeyInput!
+  ): ApiKey
+
+  """
   Assigns a Coupon to a Customer
   """
   createAppliedCoupon(
@@ -4022,6 +4961,16 @@ type Mutation {
   ): CreditNote
 
   """
+  Request data export of credit notes
+  """
+  createCreditNotesDataExport(
+    """
+    Parameters for CreateCreditNotesDataExport
+    """
+    input: CreateDataExportsCreditNotesInput!
+  ): DataExport
+
+  """
   Creates a new customer
   """
   createCustomer(
@@ -4030,6 +4979,16 @@ type Mutation {
     """
     input: CreateCustomerInput!
   ): Customer
+
+  """
+  Creates a new Customer Wallet Transaction from Customer Portal
+  """
+  createCustomerPortalWalletTransaction(
+    """
+    Parameters for CreateCustomerPortalWalletTransaction
+    """
+    input: CreateCustomerPortalWalletTransactionInput!
+  ): CustomerPortalWalletTransactionCollection
 
   """
   Creates a new Customer Wallet
@@ -4050,6 +5009,26 @@ type Mutation {
     """
     input: CreateCustomerWalletTransactionInput!
   ): WalletTransactionCollection
+
+  """
+  Creates a new dunning campaign
+  """
+  createDunningCampaign(
+    """
+    Parameters for CreateDunningCampaign
+    """
+    input: CreateDunningCampaignInput!
+  ): DunningCampaign
+
+  """
+  Create Hubspot integration
+  """
+  createHubspotIntegration(
+    """
+    Parameters for CreateHubspotIntegration
+    """
+    input: CreateHubspotIntegrationInput!
+  ): HubspotIntegration
 
   """
   Create integration collection mapping
@@ -4092,6 +5071,26 @@ type Mutation {
   ): Invoice
 
   """
+  Creates a new InvoiceCustomSection
+  """
+  createInvoiceCustomSection(
+    """
+    Parameters for CreateInvoiceCustomSection
+    """
+    input: CreateInvoiceCustomSectionInput!
+  ): InvoiceCustomSection
+
+  """
+  Request data export of invoices
+  """
+  createInvoicesDataExport(
+    """
+    Parameters for CreateInvoicesDataExport
+    """
+    input: CreateDataExportsInvoicesInput!
+  ): DataExport
+
+  """
   Create Netsuite integration
   """
   createNetsuiteIntegration(
@@ -4122,6 +5121,16 @@ type Mutation {
   ): CreatePasswordResetPayload
 
   """
+  Creates a payment request
+  """
+  createPaymentRequest(
+    """
+    Parameters for CreatePaymentRequest
+    """
+    input: PaymentRequestCreateInput!
+  ): PaymentRequest
+
+  """
   Creates a new Plan
   """
   createPlan(
@@ -4130,6 +5139,16 @@ type Mutation {
     """
     input: CreatePlanInput!
   ): Plan
+
+  """
+  Create Salesforce integration
+  """
+  createSalesforceIntegration(
+    """
+    Parameters for CreateSalesforceIntegration
+    """
+    input: CreateSalesforceIntegrationInput!
+  ): SalesforceIntegration
 
   """
   Create a new Subscription
@@ -4162,6 +5181,16 @@ type Mutation {
   ): WebhookEndpoint
 
   """
+  Create Xero integration
+  """
+  createXeroIntegration(
+    """
+    Parameters for CreateXeroIntegration
+    """
+    input: CreateXeroIntegrationInput!
+  ): XeroIntegration
+
+  """
   Deletes an add-on
   """
   destroyAddOn(
@@ -4180,6 +5209,16 @@ type Mutation {
     """
     input: DestroyAdjustedFeeInput!
   ): DestroyAdjustedFeePayload
+
+  """
+  Deletes an API key
+  """
+  destroyApiKey(
+    """
+    Parameters for DestroyApiKey
+    """
+    input: DestroyApiKeyInput!
+  ): ApiKey
 
   """
   Deletes a Billable metric
@@ -4212,6 +5251,16 @@ type Mutation {
   ): DestroyCustomerPayload
 
   """
+  Deletes a dunning campaign
+  """
+  destroyDunningCampaign(
+    """
+    Parameters for DestroyDunningCampaign
+    """
+    input: DestroyDunningCampaignInput!
+  ): DestroyDunningCampaignPayload
+
+  """
   Destroy an integration
   """
   destroyIntegration(
@@ -4240,6 +5289,16 @@ type Mutation {
     """
     input: DestroyIntegrationMappingInput!
   ): DestroyIntegrationMappingPayload
+
+  """
+  Deletes an invoice_custom_section
+  """
+  destroyInvoiceCustomSection(
+    """
+    Parameters for DestroyInvoiceCustomSection
+    """
+    input: DestroyInvoiceCustomSectionInput!
+  ): DestroyInvoiceCustomSectionPayload
 
   """
   Destroy a payment provider
@@ -4312,6 +5371,26 @@ type Mutation {
   ): Invoice
 
   """
+  Fetches taxes for one-off invoice
+  """
+  fetchDraftInvoiceTaxes(
+    """
+    Parameters for FetchDraftInvoiceTaxes
+    """
+    input: FetchDraftInvoiceTaxesInput!
+  ): AnrokFeeObjectCollection
+
+  """
+  Fetch integration accounts
+  """
+  fetchIntegrationAccounts(
+    """
+    Parameters for FetchIntegrationAccounts
+    """
+    input: FetchIntegrationAccountsInput!
+  ): IntegrationItemCollection!
+
+  """
   Fetch integration items
   """
   fetchIntegrationItems(
@@ -4322,14 +5401,14 @@ type Mutation {
   ): IntegrationItemCollection!
 
   """
-  Fetch integration tax items
+  Finalize all draft invoices
   """
-  fetchIntegrationTaxItems(
+  finalizeAllInvoices(
     """
-    Parameters for FetchIntegrationTaxItems
+    Parameters for FinalizeAllInvoices
     """
-    input: FetchIntegrationTaxItemsInput!
-  ): IntegrationItemCollection!
+    input: FinalizeAllInvoicesInput!
+  ): InvoiceCollection
 
   """
   Finalize a draft invoice
@@ -4464,6 +5543,26 @@ type Mutation {
   ): InvoiceCollection
 
   """
+  Retry all failed invoices
+  """
+  retryAllInvoices(
+    """
+    Parameters for RetryAllInvoices
+    """
+    input: RetryAllInvoicesInput!
+  ): InvoiceCollection
+
+  """
+  Retry failed invoice
+  """
+  retryInvoice(
+    """
+    Parameters for RetryInvoice
+    """
+    input: RetryInvoiceInput!
+  ): Invoice
+
+  """
   Retry invoice payment
   """
   retryInvoicePayment(
@@ -4472,6 +5571,26 @@ type Mutation {
     """
     input: RetryInvoicePaymentInput!
   ): Invoice
+
+  """
+  Retry voided invoice sync
+  """
+  retryTaxProviderVoiding(
+    """
+    Parameters for RetryTaxProviderVoiding
+    """
+    input: RetryTaxProviderVoidingInput!
+  ): Invoice
+
+  """
+  Retry tax reporting
+  """
+  retryTaxReporting(
+    """
+    Parameters for RetryTaxReporting
+    """
+    input: RetryTaxReportingInput!
+  ): CreditNote
 
   """
   Retry a Webhook
@@ -4484,7 +5603,7 @@ type Mutation {
   ): Webhook
 
   """
-  Revokes a invite
+  Revokes an invite
   """
   revokeInvite(
     """
@@ -4502,6 +5621,56 @@ type Mutation {
     """
     input: RevokeMembershipInput!
   ): Membership
+
+  """
+  Create new ApiKey while expiring provided
+  """
+  rotateApiKey(
+    """
+    Parameters for RotateApiKey
+    """
+    input: RotateApiKeyInput!
+  ): ApiKey
+
+  """
+  Sync hubspot integration invoice
+  """
+  syncHubspotIntegrationInvoice(
+    """
+    Parameters for SyncHubspotInvoice
+    """
+    input: SyncHubspotIntegrationInvoiceInput!
+  ): SyncHubspotInvoicePayload
+
+  """
+  Sync integration credit note
+  """
+  syncIntegrationCreditNote(
+    """
+    Parameters for SyncIntegrationCreditNote
+    """
+    input: SyncIntegrationCreditNoteInput!
+  ): SyncIntegrationCreditNotePayload
+
+  """
+  Sync integration invoice
+  """
+  syncIntegrationInvoice(
+    """
+    Parameters for SyncIntegrationInvoice
+    """
+    input: SyncIntegrationInvoiceInput!
+  ): SyncIntegrationInvoicePayload
+
+  """
+  Sync Salesforce integration invoice
+  """
+  syncSalesforceInvoice(
+    """
+    Parameters for SyncSalesforceInvoice
+    """
+    input: SyncSalesforceInvoiceInput!
+  ): SyncSalesforceInvoicePayload
 
   """
   Unassign a coupon from a customer
@@ -4564,6 +5733,22 @@ type Mutation {
   ): AdyenProvider
 
   """
+  Update Anrok integration
+  """
+  updateAnrokIntegration(
+    """
+    Parameters for UpdateAnrokIntegration
+    """
+    input: UpdateAnrokIntegrationInput!
+  ): AnrokIntegration
+  updateApiKey(
+    """
+    Parameters for UpdateApiKey
+    """
+    input: UpdateApiKeyInput!
+  ): ApiKey
+
+  """
   Updates an existing Billable metric
   """
   updateBillableMetric(
@@ -4614,6 +5799,16 @@ type Mutation {
   ): Customer
 
   """
+  Update customer data from Customer Portal
+  """
+  updateCustomerPortalCustomer(
+    """
+    Parameters for UpdateCustomerPortalCustomer
+    """
+    input: UpdateCustomerPortalCustomerInput!
+  ): CustomerPortalCustomer
+
+  """
   Updates a new Customer Wallet
   """
   updateCustomerWallet(
@@ -4624,6 +5819,16 @@ type Mutation {
   ): Wallet
 
   """
+  Updates a dunning campaign and its thresholds
+  """
+  updateDunningCampaign(
+    """
+    Parameters for UpdateDunningCampaign
+    """
+    input: UpdateDunningCampaignInput!
+  ): DunningCampaign
+
+  """
   Update Gocardless payment provider
   """
   updateGocardlessPaymentProvider(
@@ -4632,6 +5837,16 @@ type Mutation {
     """
     input: UpdateGocardlessPaymentProviderInput!
   ): GocardlessProvider
+
+  """
+  Update Hubspot integration
+  """
+  updateHubspotIntegration(
+    """
+    Parameters for UpdateHubspotIntegration
+    """
+    input: UpdateHubspotIntegrationInput!
+  ): HubspotIntegration
 
   """
   Update integration mapping
@@ -4654,6 +5869,16 @@ type Mutation {
   ): Mapping
 
   """
+  Update an invite
+  """
+  updateInvite(
+    """
+    Parameters for UpdateInvite
+    """
+    input: UpdateInviteInput!
+  ): Invite
+
+  """
   Update an existing invoice
   """
   updateInvoice(
@@ -4662,6 +5887,26 @@ type Mutation {
     """
     input: UpdateInvoiceInput!
   ): Invoice
+
+  """
+  Updates an InvoiceCustomSection
+  """
+  updateInvoiceCustomSection(
+    """
+    Parameters for UpdateInvoiceCustomSection
+    """
+    input: UpdateInvoiceCustomSectionInput!
+  ): InvoiceCustomSection
+
+  """
+  Update a membership
+  """
+  updateMembership(
+    """
+    Parameters for UpdateMembership
+    """
+    input: UpdateMembershipInput!
+  ): Membership
 
   """
   Update Netsuite integration
@@ -4704,6 +5949,16 @@ type Mutation {
   ): Plan
 
   """
+  Update Salesforce integration
+  """
+  updateSalesforceIntegration(
+    """
+    Parameters for UpdateSalesforceIntegration
+    """
+    input: UpdateSalesforceIntegrationInput!
+  ): SalesforceIntegration
+
+  """
   Update Stripe payment provider
   """
   updateStripePaymentProvider(
@@ -4744,6 +5999,16 @@ type Mutation {
   ): WebhookEndpoint
 
   """
+  Update Xero integration
+  """
+  updateXeroIntegration(
+    """
+    Parameters for UpdateXeroIntegration
+    """
+    input: UpdateXeroIntegrationInput!
+  ): XeroIntegration
+
+  """
   Voids a Credit Note
   """
   voidCreditNote(
@@ -4768,6 +6033,7 @@ type NetsuiteCustomer {
   externalCustomerId: String
   id: ID!
   integrationCode: String
+  integrationId: ID
   integrationType: IntegrationTypeEnum
   subsidiaryId: String
   syncWithProvider: Boolean
@@ -4782,11 +6048,12 @@ type NetsuiteIntegration {
   hasMappingsConfigured: Boolean
   id: ID!
   name: String!
-  scriptEndpointUrl: String
+  scriptEndpointUrl: String!
   syncCreditNotes: Boolean
   syncInvoices: Boolean
   syncPayments: Boolean
-  syncSalesOrders: Boolean
+  tokenId: String
+  tokenSecret: String
 }
 
 """
@@ -4853,7 +6120,6 @@ type OrganizationBillingConfiguration {
   id: ID!
   invoiceFooter: String
   invoiceGracePeriod: Int!
-  vatRate: Float!
 }
 
 input OrganizationBillingConfigurationInput {
@@ -4862,11 +6128,83 @@ input OrganizationBillingConfigurationInput {
   invoiceGracePeriod: Int
 }
 
+type OverdueBalance {
+  amountCents: BigInt!
+  currency: CurrencyEnum!
+  lagoInvoiceIds: [String!]!
+  month: ISO8601DateTime!
+}
+
+"""
+OverdueBalanceCollection type
+"""
+type OverdueBalanceCollection {
+  """
+  A collection of paginated OverdueBalanceCollection
+  """
+  collection: [OverdueBalance!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: CollectionMetadata!
+}
+
 union PaymentProvider = AdyenProvider | GocardlessProvider | StripeProvider
 
+"""
+PaymentProviderCollection type
+"""
 type PaymentProviderCollection {
+  """
+  A collection of paginated PaymentProviderCollection
+  """
   collection: [PaymentProvider!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
+}
+
+type PaymentRequest {
+  amountCents: BigInt!
+  amountCurrency: CurrencyEnum!
+  createdAt: ISO8601DateTime!
+  customer: Customer!
+  email: String!
+  id: ID!
+  invoices: [Invoice!]!
+  paymentStatus: InvoicePaymentStatusTypeEnum!
+  updatedAt: ISO8601DateTime!
+}
+
+"""
+PaymentRequestCollection type
+"""
+type PaymentRequestCollection {
+  """
+  A collection of paginated PaymentRequestCollection
+  """
+  collection: [PaymentRequest!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: CollectionMetadata!
+}
+
+"""
+Autogenerated input type of CreatePaymentRequest
+"""
+input PaymentRequestCreateInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  email: String
+  externalCustomerId: String!
+  lagoInvoiceIds: [String!]
 }
 
 """
@@ -4877,6 +6215,7 @@ type Permissions {
   addonsDelete: Boolean!
   addonsUpdate: Boolean!
   addonsView: Boolean!
+  analyticsOverdueBalancesView: Boolean!
   analyticsView: Boolean!
   billableMetricsCreate: Boolean!
   billableMetricsDelete: Boolean!
@@ -4889,6 +6228,7 @@ type Permissions {
   couponsUpdate: Boolean!
   couponsView: Boolean!
   creditNotesCreate: Boolean!
+  creditNotesExport: Boolean!
   creditNotesUpdate: Boolean!
   creditNotesView: Boolean!
   creditNotesVoid: Boolean!
@@ -4904,7 +6244,16 @@ type Permissions {
   developersKeysManage: Boolean!
   developersManage: Boolean!
   draftInvoicesUpdate: Boolean!
+  dunningCampaignsCreate: Boolean!
+  dunningCampaignsDelete: Boolean!
+  dunningCampaignsUpdate: Boolean!
+  dunningCampaignsView: Boolean!
+  invoiceCustomSectionsCreate: Boolean!
+  invoiceCustomSectionsDelete: Boolean!
+  invoiceCustomSectionsUpdate: Boolean!
+  invoiceCustomSectionsView: Boolean!
   invoicesCreate: Boolean!
+  invoicesExport: Boolean!
   invoicesSend: Boolean!
   invoicesUpdate: Boolean!
   invoicesView: Boolean!
@@ -4925,12 +6274,15 @@ type Permissions {
   organizationTaxesView: Boolean!
   organizationUpdate: Boolean!
   organizationView: Boolean!
+  paymentRequestsCreate: Boolean!
+  paymentRequestsView: Boolean!
+  paymentsCreate: Boolean!
+  paymentsView: Boolean!
   plansCreate: Boolean!
   plansDelete: Boolean!
   plansUpdate: Boolean!
   plansView: Boolean!
   subscriptionsCreate: Boolean!
-  subscriptionsDelete: Boolean!
   subscriptionsUpdate: Boolean!
   subscriptionsView: Boolean!
   walletsCreate: Boolean!
@@ -4959,6 +6311,7 @@ type Plan {
   customersCount: Int!
   description: String
   draftInvoicesCount: Int!
+  hasOverriddenPlans: Boolean
   id: ID!
   interval: PlanInterval!
   invoiceDisplayName: String
@@ -4971,10 +6324,21 @@ type Plan {
   taxes: [Tax!]
   trialPeriod: Float
   updatedAt: ISO8601DateTime!
+  usageThresholds: [UsageThreshold!]
 }
 
+"""
+PlanCollection type
+"""
 type PlanCollection {
+  """
+  A collection of paginated PlanCollection
+  """
   collection: [Plan!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -4995,6 +6359,19 @@ input PlanOverridesInput {
   name: String
   taxCodes: [String!]
   trialPeriod: Float
+  usageThresholds: [UsageThresholdOverridesInput!]
+}
+
+enum PremiumIntegrationTypeEnum {
+  api_permissions
+  auto_dunning
+  hubspot
+  netsuite
+  okta
+  progressive_billing
+  revenue_analytics
+  salesforce
+  xero
 }
 
 type Properties {
@@ -5047,6 +6424,7 @@ input ProviderCustomerInput {
 enum ProviderPaymentMethodsEnum {
   bacs_debit
   card
+  link
   sepa_debit
   us_bank_account
 }
@@ -5071,15 +6449,22 @@ type Query {
   """
   Query add-ons of an organization
   """
-  addOns(
+  addOns(limit: Int, page: Int, searchTerm: String): AddOnCollection!
+
+  """
+  Query the API key
+  """
+  apiKey(
     """
-    List of add-ons IDs to fetch
+    Uniq ID of the API key
     """
-    ids: [ID!]
-    limit: Int
-    page: Int
-    searchTerm: String
-  ): AddOnCollection!
+    id: ID!
+  ): ApiKey!
+
+  """
+  Query the API keys of current organization
+  """
+  apiKeys(limit: Int, page: Int): SanitizedApiKeyCollection!
 
   """
   Query a single billable metric of an organization
@@ -5094,18 +6479,7 @@ type Query {
   """
   Query billable metrics of an organization
   """
-  billableMetrics(
-    aggregationTypes: [AggregationTypeEnum!]
-
-    """
-    List of plan ID to fetch
-    """
-    ids: [String!]
-    limit: Int
-    page: Int
-    recurring: Boolean
-    searchTerm: String
-  ): BillableMetricCollection!
+  billableMetrics(aggregationTypes: [AggregationTypeEnum!], limit: Int, page: Int, recurring: Boolean, searchTerm: String): BillableMetricCollection!
 
   """
   Query a single coupon of an organization
@@ -5120,16 +6494,7 @@ type Query {
   """
   Query coupons of an organization
   """
-  coupons(
-    """
-    List of coupon IDs to fetch
-    """
-    ids: [ID!]
-    limit: Int
-    page: Int
-    searchTerm: String
-    status: CouponStatusEnum
-  ): CouponCollection!
+  coupons(limit: Int, page: Int, searchTerm: String, status: CouponStatusEnum): CouponCollection!
 
   """
   Query a single credit note
@@ -5145,6 +6510,30 @@ type Query {
   Fetch amounts for credit note creation
   """
   creditNoteEstimate(invoiceId: ID!, items: [CreditNoteItemInput!]!): CreditNoteEstimate!
+
+  """
+  Query credit notes
+  """
+  creditNotes(
+    amountFrom: Int
+    amountTo: Int
+    creditStatus: [CreditNoteCreditStatusEnum!]
+    currency: CurrencyEnum
+    customerExternalId: String
+
+    """
+    Uniq ID of the customer
+    """
+    customerId: ID
+    invoiceNumber: String
+    issuingDateFrom: ISO8601Date
+    issuingDateTo: ISO8601Date
+    limit: Int
+    page: Int
+    reason: [CreditNoteReasonEnum!]
+    refundStatus: [CreditNoteRefundStatusEnum!]
+    searchTerm: String
+  ): CreditNoteCollection!
 
   """
   Retrieves currently connected user
@@ -5167,27 +6556,19 @@ type Query {
   ): Customer
 
   """
-  Query customer's credit note
-  """
-  customerCreditNotes(
-    """
-    Uniq ID of the customer
-    """
-    customerId: ID!
-
-    """
-    List of plan ID to fetch
-    """
-    ids: [String!]
-    limit: Int
-    page: Int
-    searchTerm: String
-  ): CreditNoteCollection
-
-  """
   Query invoices of a customer
   """
   customerInvoices(customerId: ID!, limit: Int, page: Int, searchTerm: String, status: [InvoiceStatusTypeEnum!]): InvoiceCollection!
+
+  """
+  Query the usage of the customer on the current billing period
+  """
+  customerPortalCustomerUsage(subscriptionId: ID!): CustomerUsage!
+
+  """
+  Query invoice collections of a customer portal user
+  """
+  customerPortalInvoiceCollections(expireCache: Boolean, months: Int): FinalizedInvoiceCollectionCollection!
 
   """
   Query invoices of a customer
@@ -5197,12 +6578,37 @@ type Query {
   """
   Query customer portal organization
   """
-  customerPortalOrganization: Organization
+  customerPortalOrganization: CustomerPortalOrganization
+
+  """
+  Query overdue balances of a customer portal user
+  """
+  customerPortalOverdueBalances(expireCache: Boolean, months: Int): OverdueBalanceCollection!
+
+  """
+  Query a single subscription from the customer portal
+  """
+  customerPortalSubscription(
+    """
+    Uniq ID of the subscription
+    """
+    id: ID!
+  ): Subscription
+
+  """
+  Query customer portal subscriptions
+  """
+  customerPortalSubscriptions(limit: Int, page: Int, planCode: String, status: [StatusTypeEnum!]): SubscriptionCollection!
 
   """
   Query a customer portal user
   """
-  customerPortalUser: Customer
+  customerPortalUser: CustomerPortalCustomer
+
+  """
+  Query wallets
+  """
+  customerPortalWallets(limit: Int, page: Int): CustomerPortalWalletCollection!
 
   """
   Query the usage of the customer on the current billing period
@@ -5212,15 +6618,22 @@ type Query {
   """
   Query customers of an organization
   """
-  customers(
+  customers(limit: Int, page: Int, searchTerm: String): CustomerCollection!
+
+  """
+  Query a single dunning campaign of an organization
+  """
+  dunningCampaign(
     """
-    List of customer Lago ID to fetch
+    Unique ID of the dunning campaign
     """
-    ids: [String!]
-    limit: Int
-    page: Int
-    searchTerm: String
-  ): CustomerCollection!
+    id: ID!
+  ): DunningCampaign!
+
+  """
+  Query dunning campaigns of an organization
+  """
+  dunningCampaigns(appliedToOrganization: Boolean, currency: [CurrencyEnum!], limit: Int, order: String, page: Int, searchTerm: String): DunningCampaignCollection!
 
   """
   Query events of an organization
@@ -5235,7 +6648,7 @@ type Query {
   """
   Query gross revenue of an organization
   """
-  grossRevenues(currency: CurrencyEnum, externalCustomerId: String): GrossRevenueCollection!
+  grossRevenues(currency: CurrencyEnum, expireCache: Boolean, externalCustomerId: String, months: Int): GrossRevenueCollection!
 
   """
   Query a single integration
@@ -5335,6 +6748,21 @@ type Query {
   ): CreditNoteCollection
 
   """
+  Query a single invoice_custom_section of an organization
+  """
+  invoiceCustomSection(
+    """
+    Uniq ID of the invoice_custom_section
+    """
+    id: ID!
+  ): InvoiceCustomSection!
+
+  """
+  Query invoice_custom_sections
+  """
+  invoiceCustomSections(limit: Int, page: Int): InvoiceCustomSectionCollection
+
+  """
   Query invoiced usage of an organization
   """
   invoicedUsages(currency: CurrencyEnum): InvoicedUsageCollection!
@@ -5343,16 +6771,23 @@ type Query {
   Query invoices
   """
   invoices(
+    currency: CurrencyEnum
+    customerExternalId: String
+
     """
-    List of invoice IDs to fetch
+    Uniq ID of the customer
     """
-    ids: [ID!]
+    customerId: ID
+    invoiceType: [InvoiceTypeEnum!]
+    issuingDateFrom: ISO8601Date
+    issuingDateTo: ISO8601Date
     limit: Int
     page: Int
     paymentDisputeLost: Boolean
+    paymentOverdue: Boolean
     paymentStatus: [InvoicePaymentStatusTypeEnum!]
     searchTerm: String
-    status: InvoiceStatusTypeEnum
+    status: [InvoiceStatusTypeEnum!]
   ): InvoiceCollection!
 
   """
@@ -5369,6 +6804,11 @@ type Query {
   Query the current organization
   """
   organization: CurrentOrganization
+
+  """
+  Query overdue balances of an organization
+  """
+  overdueBalances(currency: CurrencyEnum, expireCache: Boolean, externalCustomerId: String, months: Int): OverdueBalanceCollection!
 
   """
   Query a password reset by token
@@ -5401,6 +6841,11 @@ type Query {
   paymentProviders(limit: Int, page: Int, type: ProviderTypeEnum): PaymentProviderCollection
 
   """
+  Query payment requests of an organization
+  """
+  paymentRequests(externalCustomerId: String, limit: Int, page: Int): PaymentRequestCollection!
+
+  """
   Query a single plan of an organization
   """
   plan(
@@ -5413,15 +6858,7 @@ type Query {
   """
   Query plans of an organization
   """
-  plans(
-    """
-    List of plan ID to fetch
-    """
-    ids: [String!]
-    limit: Int
-    page: Int
-    searchTerm: String
-  ): PlanCollection!
+  plans(limit: Int, page: Int, searchTerm: String): PlanCollection!
 
   """
   Query a single subscription of an organization
@@ -5451,19 +6888,7 @@ type Query {
   """
   Query taxes of an organization
   """
-  taxes(
-    appliedToOrganization: Boolean
-    autoGenerated: Boolean
-
-    """
-    List of taxes IDs to fetch
-    """
-    ids: [ID!]
-    limit: Int
-    order: String
-    page: Int
-    searchTerm: String
-  ): TaxCollection!
+  taxes(appliedToOrganization: Boolean, autoGenerated: Boolean, limit: Int, order: String, page: Int, searchTerm: String): TaxCollection!
 
   """
   Query a single wallet of an organization
@@ -5479,10 +6904,6 @@ type Query {
   Query wallet transactions
   """
   walletTransactions(
-    """
-    List of wallet transaction IDs to fetch
-    """
-    ids: [ID!]
     limit: Int
     page: Int
     status: WalletTransactionStatusEnum
@@ -5525,15 +6946,7 @@ type Query {
   """
   Query webhook endpoints of an organization
   """
-  webhookEndpoints(
-    """
-    List of webhook endpoint IDs to fetch
-    """
-    ids: [ID!]
-    limit: Int
-    page: Int
-    searchTerm: String
-  ): WebhookEndpointCollection!
+  webhookEndpoints(limit: Int, page: Int, searchTerm: String): WebhookEndpointCollection!
 
   """
   Query Webhooks
@@ -5548,17 +6961,26 @@ enum RecurringTransactionIntervalEnum {
   yearly
 }
 
+enum RecurringTransactionMethodEnum {
+  fixed
+  target
+}
+
 type RecurringTransactionRule {
   createdAt: ISO8601DateTime!
   grantedCredits: String!
   interval: RecurringTransactionIntervalEnum
+  invoiceRequiresSuccessfulPayment: Boolean!
   lagoId: ID!
+  method: RecurringTransactionMethodEnum!
   paidCredits: String!
-  ruleType: RecurringTransactionRuleTypeEnum!
+  startedAt: ISO8601DateTime
+  targetOngoingBalance: String
   thresholdCredits: String
+  trigger: RecurringTransactionTriggerEnum!
 }
 
-enum RecurringTransactionRuleTypeEnum {
+enum RecurringTransactionTriggerEnum {
   interval
   threshold
 }
@@ -5594,6 +7016,10 @@ input RegisterUserInput {
   password: String!
 }
 
+enum RegroupPaidFeesEnum {
+  invoice
+}
+
 """
 ResetPassword type
 """
@@ -5627,9 +7053,52 @@ input RetryAllInvoicePaymentsInput {
 }
 
 """
+Autogenerated input type of RetryAllInvoices
+"""
+input RetryAllInvoicesInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+}
+
+"""
+Autogenerated input type of RetryInvoice
+"""
+input RetryInvoiceInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID!
+}
+
+"""
 Autogenerated input type of RetryInvoicePayment
 """
 input RetryInvoicePaymentInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID!
+}
+
+"""
+Autogenerated input type of RetryTaxProviderVoiding
+"""
+input RetryTaxProviderVoidingInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID!
+}
+
+"""
+Autogenerated input type of RetryTaxReporting
+"""
+input RetryTaxReportingInput {
   """
   A unique identifier for the client performing the mutation.
   """
@@ -5670,6 +7139,66 @@ input RevokeMembershipInput {
   id: ID!
 }
 
+"""
+Autogenerated input type of RotateApiKey
+"""
+input RotateApiKeyInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  expiresAt: ISO8601DateTime
+  id: ID!
+  name: String
+}
+
+enum RoundingFunctionEnum {
+  ceil
+  floor
+  round
+}
+
+type SalesforceCustomer {
+  externalCustomerId: String
+  id: ID!
+  integrationCode: String
+  integrationId: ID
+  integrationType: IntegrationTypeEnum
+  syncWithProvider: Boolean
+}
+
+type SalesforceIntegration {
+  code: String!
+  id: ID!
+  instanceId: String!
+  name: String!
+}
+
+type SanitizedApiKey {
+  createdAt: ISO8601DateTime!
+  expiresAt: ISO8601DateTime
+  id: ID!
+  lastUsedAt: ISO8601DateTime
+  name: String
+  permissions: JSON!
+  value: String!
+}
+
+"""
+SanitizedApiKeyCollection type
+"""
+type SanitizedApiKeyCollection {
+  """
+  A collection of paginated SanitizedApiKeyCollection
+  """
+  collection: [SanitizedApiKey!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
+  metadata: CollectionMetadata!
+}
+
 enum StatusTypeEnum {
   active
   canceled
@@ -5689,11 +7218,14 @@ type Subscription {
   billingTime: BillingTimeEnum
   canceledAt: ISO8601DateTime
   createdAt: ISO8601DateTime!
+  currentBillingPeriodEndingAt: ISO8601DateTime
+  currentBillingPeriodStartedAt: ISO8601DateTime
   customer: Customer!
   endingAt: ISO8601DateTime
   externalId: String!
   fees: [Fee!]
   id: ID!
+  lifetimeUsage: SubscriptionLifetimeUsage
   name: String
   nextName: String
   nextPendingStartDate: ISO8601Date
@@ -5708,9 +7240,28 @@ type Subscription {
   updatedAt: ISO8601DateTime!
 }
 
+"""
+SubscriptionCollection type
+"""
 type SubscriptionCollection {
+  """
+  A collection of paginated SubscriptionCollection
+  """
   collection: [Subscription!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
+}
+
+type SubscriptionLifetimeUsage {
+  lastThresholdAmountCents: BigInt
+  nextThresholdAmountCents: BigInt
+  nextThresholdRatio: Float
+  totalUsageAmountCents: BigInt!
+  totalUsageFromDatetime: ISO8601DateTime!
+  totalUsageToDatetime: ISO8601DateTime!
 }
 
 type Subsidiary {
@@ -5718,9 +7269,107 @@ type Subsidiary {
   externalName: String
 }
 
+"""
+SubsidiaryCollection type
+"""
 type SubsidiaryCollection {
+  """
+  A collection of paginated SubsidiaryCollection
+  """
   collection: [Subsidiary!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
+}
+
+"""
+Autogenerated input type of SyncHubspotInvoice
+"""
+input SyncHubspotIntegrationInvoiceInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  invoiceId: ID!
+}
+
+"""
+Autogenerated return type of SyncHubspotInvoice.
+"""
+type SyncHubspotInvoicePayload {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  invoiceId: ID
+}
+
+"""
+Autogenerated input type of SyncIntegrationCreditNote
+"""
+input SyncIntegrationCreditNoteInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  creditNoteId: ID!
+}
+
+"""
+Autogenerated return type of SyncIntegrationCreditNote.
+"""
+type SyncIntegrationCreditNotePayload {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  creditNoteId: ID
+}
+
+"""
+Autogenerated input type of SyncIntegrationInvoice
+"""
+input SyncIntegrationInvoiceInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  invoiceId: ID!
+}
+
+"""
+Autogenerated return type of SyncIntegrationInvoice.
+"""
+type SyncIntegrationInvoicePayload {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  invoiceId: ID
+}
+
+"""
+Autogenerated input type of SyncSalesforceInvoice
+"""
+input SyncSalesforceInvoiceInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  invoiceId: ID!
+}
+
+"""
+Autogenerated return type of SyncSalesforceInvoice.
+"""
+type SyncSalesforceInvoicePayload {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  invoiceId: ID
 }
 
 type Tax {
@@ -5755,8 +7404,18 @@ type Tax {
   updatedAt: ISO8601DateTime!
 }
 
+"""
+TaxCollection type
+"""
 type TaxCollection {
+  """
+  A collection of paginated TaxCollection
+  """
   collection: [Tax!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -6227,6 +7886,11 @@ enum TimezoneEnum {
   TZ_AUSTRALIA_BRISBANE
 
   """
+  Australia/Canberra
+  """
+  TZ_AUSTRALIA_CANBERRA
+
+  """
   Australia/Darwin
   """
   TZ_AUSTRALIA_DARWIN
@@ -6546,6 +8210,34 @@ input UpdateAdyenPaymentProviderInput {
 }
 
 """
+Autogenerated input type of UpdateAnrokIntegration
+"""
+input UpdateAnrokIntegrationInput {
+  apiKey: String
+
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String
+  id: ID
+  name: String
+}
+
+"""
+Autogenerated input type of UpdateApiKey
+"""
+input UpdateApiKeyInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID!
+  name: String
+  permissions: JSON
+}
+
+"""
 Update Billable metric input arguments
 """
 input UpdateBillableMetricInput {
@@ -6557,12 +8249,14 @@ input UpdateBillableMetricInput {
   clientMutationId: String
   code: String!
   description: String!
+  expression: String
   fieldName: String
   filters: [BillableMetricFiltersInput!]
-  group: JSON
   id: String!
   name: String!
   recurring: Boolean
+  roundingFunction: RoundingFunctionEnum
+  roundingPrecision: Int
   weightedInterval: WeightedIntervalEnum
 }
 
@@ -6609,6 +8303,8 @@ Update Customer input arguments
 input UpdateCustomerInput {
   addressLine1: String
   addressLine2: String
+  applicableInvoiceCustomSectionIds: [ID!]
+  appliedDunningCampaignId: ID
   billingConfiguration: CustomerBillingConfigurationInput
   city: String
 
@@ -6618,22 +8314,29 @@ input UpdateCustomerInput {
   clientMutationId: String
   country: CountryCode
   currency: CurrencyEnum
+  customerType: CustomerTypeEnum
   email: String
+  excludeFromDunningCampaign: Boolean
   externalId: String!
   externalSalesforceId: String
+  finalizeZeroAmountInvoice: FinalizeZeroAmountInvoiceEnum
+  firstname: String
   id: ID!
+  integrationCustomers: [IntegrationCustomerInput!]
   invoiceGracePeriod: Int
+  lastname: String
   legalName: String
   legalNumber: String
   logoUrl: String
   metadata: [CustomerMetadataInput!]
-  name: String!
+  name: String
   netPaymentTerm: Int
-  netsuiteCustomer: IntegrationCustomerInput
   paymentProvider: ProviderTypeEnum
   paymentProviderCode: String
   phone: String
   providerCustomer: ProviderCustomerInput
+  shippingAddress: CustomerAddressInput
+  skipInvoiceCustomSections: Boolean
   state: String
   taxCodes: [String!]
   taxIdentificationNumber: String
@@ -6655,6 +8358,32 @@ input UpdateCustomerInvoiceGracePeriodInput {
 }
 
 """
+Customer Portal Customer Update input arguments
+"""
+input UpdateCustomerPortalCustomerInput {
+  addressLine1: String
+  addressLine2: String
+  city: String
+
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  country: CountryCode
+  customerType: CustomerTypeEnum
+  documentLocale: String
+  email: String
+  firstname: String
+  lastname: String
+  legalName: String
+  name: String
+  shippingAddress: CustomerAddressInput
+  state: String
+  taxIdentificationNumber: String
+  zipcode: String
+}
+
+"""
 Update Wallet Input
 """
 input UpdateCustomerWalletInput {
@@ -6664,8 +8393,28 @@ input UpdateCustomerWalletInput {
   clientMutationId: String
   expirationAt: ISO8601DateTime
   id: ID!
+  invoiceRequiresSuccessfulPayment: Boolean
   name: String
   recurringTransactionRules: [UpdateRecurringTransactionRuleInput!]
+}
+
+"""
+Autogenerated input type of UpdateDunningCampaign
+"""
+input UpdateDunningCampaignInput {
+  appliedToOrganization: Boolean
+
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String
+  daysBetweenAttempts: Int
+  description: String
+  id: ID!
+  maxAttempts: Int
+  name: String
+  thresholds: [DunningCampaignThresholdInput!]
 }
 
 """
@@ -6683,6 +8432,23 @@ input UpdateGocardlessPaymentProviderInput {
 }
 
 """
+Autogenerated input type of UpdateHubspotIntegration
+"""
+input UpdateHubspotIntegrationInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String
+  connectionId: String
+  defaultTargetedObject: HubspotTargetedObjectsEnum
+  id: ID
+  name: String
+  syncInvoices: Boolean
+  syncSubscriptions: Boolean
+}
+
+"""
 Autogenerated input type of UpdateIntegrationCollectionMapping
 """
 input UpdateIntegrationCollectionMappingInput {
@@ -6696,6 +8462,9 @@ input UpdateIntegrationCollectionMappingInput {
   id: ID!
   integrationId: ID
   mappingType: MappingTypeEnum
+  taxCode: String
+  taxNexus: String
+  taxType: String
 }
 
 """
@@ -6716,6 +8485,35 @@ input UpdateIntegrationMappingInput {
 }
 
 """
+Autogenerated input type of UpdateInvite
+"""
+input UpdateInviteInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID!
+  role: MembershipRole!
+}
+
+"""
+Autogenerated input type of UpdateInvoiceCustomSection
+"""
+input UpdateInvoiceCustomSectionInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String
+  description: String
+  details: String
+  displayName: String
+  id: ID!
+  name: String
+  selected: Boolean
+}
+
+"""
 Update Invoice input arguments
 """
 input UpdateInvoiceInput {
@@ -6726,6 +8524,18 @@ input UpdateInvoiceInput {
   id: ID!
   metadata: [InvoiceMetadataInput!]
   paymentStatus: InvoicePaymentStatusTypeEnum
+}
+
+"""
+Autogenerated input type of UpdateMembership
+"""
+input UpdateMembershipInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  id: ID!
+  role: MembershipRole!
 }
 
 """
@@ -6748,7 +8558,8 @@ input UpdateNetsuiteIntegrationInput {
   syncCreditNotes: Boolean
   syncInvoices: Boolean
   syncPayments: Boolean
-  syncSalesOrders: Boolean
+  tokenId: String
+  tokenSecret: String
 }
 
 """
@@ -6787,6 +8598,7 @@ input UpdateOrganizationInput {
   email: String
   emailSettings: [EmailSettingsEnum!]
   euTaxManagement: Boolean
+  finalizeZeroAmountInvoice: Boolean
   legalName: String
   legalNumber: String
   logo: String
@@ -6805,6 +8617,7 @@ input UpdatePlanInput {
   amountCents: BigInt!
   amountCurrency: CurrencyEnum!
   billChargesMonthly: Boolean
+  cascadeUpdates: Boolean
   charges: [ChargeInput!]!
 
   """
@@ -6821,15 +8634,34 @@ input UpdatePlanInput {
   payInAdvance: Boolean!
   taxCodes: [String!]
   trialPeriod: Float
+  usageThresholds: [UsageThresholdInput!]
 }
 
 input UpdateRecurringTransactionRuleInput {
   grantedCredits: String
   interval: RecurringTransactionIntervalEnum
+  invoiceRequiresSuccessfulPayment: Boolean
   lagoId: ID
+  method: RecurringTransactionMethodEnum
   paidCredits: String
-  ruleType: RecurringTransactionRuleTypeEnum
+  startedAt: ISO8601DateTime
+  targetOngoingBalance: String
   thresholdCredits: String
+  trigger: RecurringTransactionTriggerEnum
+}
+
+"""
+Autogenerated input type of UpdateSalesforceIntegration
+"""
+input UpdateSalesforceIntegrationInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String
+  id: ID
+  instanceId: String
+  name: String
 }
 
 """
@@ -6859,6 +8691,46 @@ input UpdateSubscriptionInput {
   name: String
   planOverrides: PlanOverridesInput
   subscriptionAt: ISO8601DateTime
+}
+
+"""
+Autogenerated input type of UpdateXeroIntegration
+"""
+input UpdateXeroIntegrationInput {
+  """
+  A unique identifier for the client performing the mutation.
+  """
+  clientMutationId: String
+  code: String
+  connectionId: String
+  id: ID
+  name: String
+  syncCreditNotes: Boolean
+  syncInvoices: Boolean
+  syncPayments: Boolean
+}
+
+type UsageThreshold {
+  amountCents: BigInt!
+  createdAt: ISO8601DateTime!
+  id: ID!
+  recurring: Boolean!
+  thresholdDisplayName: String
+  updatedAt: ISO8601DateTime!
+}
+
+input UsageThresholdInput {
+  amountCents: BigInt
+  id: ID
+  recurring: Boolean
+  thresholdDisplayName: String
+}
+
+input UsageThresholdOverridesInput {
+  amountCents: BigInt!
+  id: ID
+  recurring: Boolean
+  thresholdDisplayName: String
 }
 
 type User {
@@ -6922,6 +8794,7 @@ type Wallet {
   customer: Customer
   expirationAt: ISO8601DateTime
   id: ID!
+  invoiceRequiresSuccessfulPayment: Boolean!
   lastBalanceSyncAt: ISO8601DateTime
   lastConsumedCreditAt: ISO8601DateTime
   name: String
@@ -6934,8 +8807,18 @@ type Wallet {
   updatedAt: ISO8601DateTime!
 }
 
+"""
+WalletCollection type
+"""
 type WalletCollection {
+  """
+  A collection of paginated WalletCollection
+  """
   collection: [Wallet!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -6949,6 +8832,7 @@ type WalletTransaction {
   createdAt: ISO8601DateTime!
   creditAmount: String!
   id: ID!
+  invoiceRequiresSuccessfulPayment: Boolean!
   settledAt: ISO8601DateTime
   status: WalletTransactionStatusEnum!
   transactionStatus: WalletTransactionTransactionStatusEnum!
@@ -6957,8 +8841,18 @@ type WalletTransaction {
   wallet: Wallet
 }
 
+"""
+WalletTransactionCollection type
+"""
 type WalletTransactionCollection {
+  """
+  A collection of paginated WalletTransactionCollection
+  """
   collection: [WalletTransaction!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -6995,8 +8889,18 @@ type Webhook {
   webhookType: String!
 }
 
+"""
+WebhookCollection type
+"""
 type WebhookCollection {
+  """
+  A collection of paginated WebhookCollection
+  """
   collection: [Webhook!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -7009,8 +8913,18 @@ type WebhookEndpoint {
   webhookUrl: String!
 }
 
+"""
+WebhookEndpointCollection type
+"""
 type WebhookEndpointCollection {
+  """
+  A collection of paginated WebhookEndpointCollection
+  """
   collection: [WebhookEndpoint!]!
+
+  """
+  Pagination Metadata for navigating the Pagination
+  """
   metadata: CollectionMetadata!
 }
 
@@ -7052,4 +8966,24 @@ enum WebhookStatusEnum {
 
 enum WeightedIntervalEnum {
   seconds
+}
+
+type XeroCustomer {
+  externalCustomerId: String
+  id: ID!
+  integrationCode: String
+  integrationId: ID
+  integrationType: IntegrationTypeEnum
+  syncWithProvider: Boolean
+}
+
+type XeroIntegration {
+  code: String!
+  connectionId: ID!
+  hasMappingsConfigured: Boolean
+  id: ID!
+  name: String!
+  syncCreditNotes: Boolean
+  syncInvoices: Boolean
+  syncPayments: Boolean
 }

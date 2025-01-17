@@ -4,7 +4,7 @@ module Invoices
   class CreatePayInAdvanceChargeService < BaseService
     def initialize(charge:, event:, timestamp:, invoice: nil)
       @charge = charge
-      @event = event
+      @event = Events::CommonFactory.new_instance(source: event)
       @timestamp = timestamp
 
       # NOTE: In case of retry when the creation process failed,
@@ -16,7 +16,8 @@ module Invoices
     end
 
     def call
-      fees = generate_fees
+      fee_result = generate_fees
+      fees = fee_result.fees
       return Result.new if fees.none?
 
       create_generating_invoice unless invoice
@@ -29,24 +30,37 @@ module Invoices
         invoice.sub_total_excluding_taxes_amount_cents = invoice.fees_amount_cents
         Credits::AppliedCouponsService.call(invoice:) if invoice.fees_amount_cents&.positive?
 
-        Invoices::ComputeAmountsFromFees.call(invoice:)
-        create_credit_note_credit if credit_notes.any?
+        if tax_error?(fee_result)
+          invoice.failed!
+          invoice.fees.each { |f| SendWebhookJob.perform_later('fee.created', f) }
+          create_error_detail(fee_result.error.messages.dig(:tax_error)&.first)
+
+          return fee_result
+        end
+
+        Invoices::ComputeAmountsFromFees.call(invoice:, provider_taxes: result.fees_taxes)
+        create_credit_note_credit
         create_applied_prepaid_credit if should_create_applied_prepaid_credit?
+        Invoices::ApplyInvoiceCustomSectionsService.call(invoice:)
 
         invoice.payment_status = invoice.total_amount_cents.positive? ? :pending : :succeeded
-        invoice.finalized!
+        Invoices::TransitionToFinalStatusService.call(invoice:)
+        invoice.save!
       end
 
-      track_invoice_created(invoice)
-
-      deliver_webhooks if should_deliver_webhook?
-      InvoiceMailer.with(invoice:).finalized.deliver_later if should_deliver_email?
-      Invoices::Payments::CreateService.new(invoice).call
+      unless invoice.closed?
+        Utils::SegmentTrack.invoice_created(invoice)
+        deliver_webhooks
+        GeneratePdfAndNotifyJob.perform_later(invoice:, email: should_deliver_email?)
+        Integrations::Aggregator::Invoices::CreateJob.perform_later(invoice:) if invoice.should_sync_invoice?
+        Integrations::Aggregator::Invoices::Hubspot::CreateJob.perform_later(invoice:) if invoice.should_sync_hubspot_invoice?
+        Invoices::Payments::CreateService.call_async(invoice:)
+      end
 
       result
     rescue ActiveRecord::RecordInvalid => e
       result.record_validation_failure!(record: e.record)
-    rescue Sequenced::SequenceError
+    rescue Sequenced::SequenceError, ActiveRecord::StaleObjectError
       raise
     rescue => e
       result.fail_with_error!(e)
@@ -56,7 +70,8 @@ module Invoices
 
     attr_accessor :timestamp, :charge, :event, :invoice
 
-    delegate :subscription, :customer, to: :event
+    delegate :subscription, to: :event
+    delegate :customer, to: :subscription
 
     def create_generating_invoice
       invoice_result = Invoices::CreateGeneratingService.call(
@@ -65,6 +80,7 @@ module Invoices
         currency: customer.currency,
         datetime: Time.zone.at(timestamp),
         charge_in_advance: true,
+        invoice_id: result.invoice_id
       ) do |invoice|
         Invoices::CreateInvoiceSubscriptionService
           .call(invoice:, subscriptions: [subscription], timestamp:, invoicing_reason: :in_advance_charge)
@@ -77,12 +93,12 @@ module Invoices
 
     def generate_fees
       fee_result = Fees::CreatePayInAdvanceService.call(charge:, event:, estimate: true)
-      fee_result.raise_if_error!
-      fee_result.fees
-    end
+      fee_result.raise_if_error! unless tax_error?(fee_result)
 
-    def should_deliver_webhook?
-      customer.organization.webhook_endpoints.any?
+      result.fees_taxes = fee_result.fees_taxes
+      result.invoice_id = fee_result.invoice_id
+
+      fee_result
     end
 
     def deliver_webhooks
@@ -90,28 +106,8 @@ module Invoices
       SendWebhookJob.perform_later('invoice.created', invoice)
     end
 
-    def track_invoice_created(invoice)
-      SegmentTrackJob.perform_later(
-        membership_id: CurrentContext.membership,
-        event: 'invoice_created',
-        properties: {
-          organization_id: invoice.organization.id,
-          invoice_id: invoice.id,
-          invoice_type: invoice.invoice_type,
-        },
-      )
-    end
-
     def should_deliver_email?
       License.premium? && customer.organization.email_settings.include?('invoice.finalized')
-    end
-
-    def credit_notes
-      @credit_notes ||= customer.credit_notes
-        .finalized
-        .available
-        .where.not(invoice_id: invoice.id)
-        .order(created_at: :asc)
     end
 
     def wallet
@@ -128,7 +124,7 @@ module Invoices
     end
 
     def create_credit_note_credit
-      credit_result = Credits::CreditNoteService.new(invoice:, credit_notes:).call
+      credit_result = Credits::CreditNoteService.new(invoice:).call
       credit_result.raise_if_error!
 
       refresh_amounts(credit_amount_cents: credit_result.credits.sum(&:amount_cents)) if credit_result.credits
@@ -143,6 +139,26 @@ module Invoices
 
     def refresh_amounts(credit_amount_cents:)
       invoice.total_amount_cents -= credit_amount_cents
+    end
+
+    def tax_error?(result)
+      return false unless result.error.is_a?(BaseService::ValidationFailure)
+
+      result.error&.messages&.dig(:tax_error).present?
+    end
+
+    def create_error_detail(code)
+      error_result = ErrorDetails::CreateService.call(
+        owner: invoice,
+        organization: invoice.organization,
+        params: {
+          error_code: :tax_error,
+          details: {
+            tax_error: code
+          }
+        }
+      )
+      error_result.raise_if_error!
     end
   end
 end

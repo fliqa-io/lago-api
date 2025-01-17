@@ -5,7 +5,7 @@ class ChargeFilter < ApplicationRecord
   include Discard::Model
   self.discard_column = :deleted_at
 
-  belongs_to :charge, -> { with_discarded }
+  belongs_to :charge, -> { with_discarded }, touch: true
 
   has_many :values, class_name: 'ChargeFilterValue', dependent: :destroy
   has_many :billable_metric_filters, through: :values
@@ -25,13 +25,19 @@ class ChargeFilter < ApplicationRecord
   end
 
   def to_h
-    values.each_with_object({}) do |filter_value, result|
+    @to_h ||= values.each_with_object({}) do |filter_value, result|
+      result[filter_value.billable_metric_filter.key] = filter_value.values
+    end
+  end
+
+  def to_h_with_discarded
+    @to_h_with_discarded ||= values.with_discarded.each_with_object({}) do |filter_value, result|
       result[filter_value.billable_metric_filter.key] = filter_value.values
     end
   end
 
   def to_h_with_all_values
-    values.each_with_object({}) do |filter_value, result|
+    @to_h_with_all_values ||= values.each_with_object({}) do |filter_value, result|
       values = filter_value.values
       values = filter_value.billable_metric_filter.values if values == [ChargeFilterValue::ALL_FILTER_VALUES]
 
@@ -67,3 +73,26 @@ class ChargeFilter < ApplicationRecord
       .each { |code| errors.add(:properties, code) }
   end
 end
+
+# == Schema Information
+#
+# Table name: charge_filters
+#
+#  id                   :uuid             not null, primary key
+#  deleted_at           :datetime
+#  invoice_display_name :string
+#  properties           :jsonb            not null
+#  created_at           :datetime         not null
+#  updated_at           :datetime         not null
+#  charge_id            :uuid             not null
+#
+# Indexes
+#
+#  index_active_charge_filters         (charge_id) WHERE (deleted_at IS NULL)
+#  index_charge_filters_on_charge_id   (charge_id)
+#  index_charge_filters_on_deleted_at  (deleted_at)
+#
+# Foreign Keys
+#
+#  fk_rails_...  (charge_id => charges.id)
+#

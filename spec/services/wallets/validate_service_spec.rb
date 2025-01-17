@@ -20,7 +20,7 @@ RSpec.describe Wallets::ValidateService, type: :service do
       organization_id: organization.id,
       paid_credits:,
       granted_credits:,
-      expiration_at:,
+      expiration_at:
     }
   end
 
@@ -37,7 +37,7 @@ RSpec.describe Wallets::ValidateService, type: :service do
           customer: nil,
           organization_id: organization.id,
           paid_credits:,
-          granted_credits:,
+          granted_credits:
         }
       end
 
@@ -101,19 +101,37 @@ RSpec.describe Wallets::ValidateService, type: :service do
           expect(result.error.messages[:expiration_at]).to eq(['invalid_date'])
         end
       end
+
+      context 'with invalid transaction metadata' do
+        let(:args) do
+          {
+            customer:,
+            organization_id: organization.id,
+            paid_credits:,
+            granted_credits:,
+            expiration_at:,
+            transaction_metadata: [{key: "valid key", value1: "invalid value"}]
+          }
+        end
+
+        it 'returns false and result has errors' do
+          expect(validate_service).not_to be_valid
+          expect(result.error.messages[:metadata]).to eq(['invalid_key_value_pair'])
+        end
+      end
     end
 
     context 'with recurring transaction rules' do
       let(:rules) do
         [
           {
-            rule_type: 'interval',
-            interval: 'monthly',
+            trigger: 'interval',
+            interval: 'monthly'
           },
           {
-            rule_type: 'threshold',
-            threshold_credits: '-1.0',
-          },
+            trigger: 'threshold',
+            threshold_credits: '-1.0'
+          }
         ]
       end
       let(:args) do
@@ -122,45 +140,13 @@ RSpec.describe Wallets::ValidateService, type: :service do
           organization_id: organization.id,
           paid_credits:,
           granted_credits:,
-          recurring_transaction_rules: rules,
+          recurring_transaction_rules: rules
         }
       end
 
       it 'returns false and result has errors' do
         expect(validate_service).not_to be_valid
         expect(result.error.messages[:recurring_transaction_rules]).to eq(['invalid_number_of_recurring_rules'])
-      end
-
-      context 'when invalid interval' do
-        let(:rules) do
-          [
-            {
-              rule_type: 'interval',
-              interval: 'invalid',
-            },
-          ]
-        end
-
-        it 'returns false and result has errors' do
-          expect(validate_service).not_to be_valid
-          expect(result.error.messages[:recurring_transaction_rules]).to eq(['invalid_recurring_rule'])
-        end
-      end
-
-      context 'when invalid threshold credits' do
-        let(:rules) do
-          [
-            {
-              rule_type: 'threshold',
-              threshold_credits: 'invalid',
-            },
-          ]
-        end
-
-        it 'returns false and result has errors' do
-          expect(validate_service).not_to be_valid
-          expect(result.error.messages[:recurring_transaction_rules]).to eq(['invalid_recurring_rule'])
-        end
       end
     end
   end

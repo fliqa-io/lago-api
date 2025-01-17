@@ -9,9 +9,9 @@ module PaymentProviders
       retry_on BaseService::NotFoundFailure
 
       def perform(organization:, event:)
-        result = PaymentProviders::StripeService.new.handle_event(
+        result = PaymentProviders::Stripe::HandleEventService.call(
           organization:,
-          event_json: event,
+          event_json: event
         )
         result.raise_if_error!
       end

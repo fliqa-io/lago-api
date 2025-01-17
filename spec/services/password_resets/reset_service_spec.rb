@@ -12,7 +12,7 @@ RSpec.describe PasswordResets::ResetService, type: :service do
     let(:reset_args) do
       {
         token: password_reset.token,
-        new_password: 'HelloLago!2',
+        new_password: 'HelloLago!2'
       }
     end
 
@@ -32,7 +32,7 @@ RSpec.describe PasswordResets::ResetService, type: :service do
 
       expect(data).to be_present
       expect(SegmentIdentifyJob).to have_received(:perform_later).with(
-        membership_id: "membership/#{membership.id}",
+        membership_id: "membership/#{membership.id}"
       )
     end
 

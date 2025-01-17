@@ -11,13 +11,15 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
       boundaries: {
         from_datetime:,
         to_datetime:,
-        charges_duration:,
+        charges_duration:
       },
       filters:,
+      bypass_aggregation:
     )
   end
 
   let(:event_store_class) { Events::Stores::PostgresStore }
+  let(:bypass_aggregation) { false }
   let(:filters) { {grouped_by:, matching_filters:, ignored_filters:} }
 
   let(:subscription) { create(:subscription, started_at: DateTime.parse('2023-04-01 22:22:22')) }
@@ -32,7 +34,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
   let(:charge) do
     create(
       :standard_charge,
-      billable_metric:,
+      billable_metric:
     )
   end
 
@@ -48,7 +50,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
       {timestamp: Time.zone.parse('2023-08-01 02:00:00'), value: -4},
       {timestamp: Time.zone.parse('2023-08-01 04:00:00'), value: -2},
       {timestamp: Time.zone.parse('2023-08-01 05:00:00'), value: 10},
-      {timestamp: Time.zone.parse('2023-08-01 05:30:00'), value: -10},
+      {timestamp: Time.zone.parse('2023-08-01 05:30:00'), value: -10}
     ]
   end
 
@@ -65,7 +67,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
         subscription:,
         customer:,
         timestamp: values[:timestamp],
-        properties:,
+        properties:
       )
     end
   end
@@ -80,7 +82,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
   context 'with a single event' do
     let(:events_values) do
       [
-        {timestamp: Time.zone.parse('2023-08-01 00:00:00.000'), value: 1000},
+        {timestamp: Time.zone.parse('2023-08-01 00:00:00.000'), value: 1000}
       ]
     end
 
@@ -104,11 +106,24 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
     end
   end
 
+  context 'when bypass_aggregation is set to true' do
+    let(:bypass_aggregation) { true }
+
+    it 'returns a default empty result' do
+      result = aggregator.aggregate
+
+      expect(result.aggregation).to eq(0)
+      expect(result.count).to eq(0)
+      expect(result.current_usage_units).to eq(0)
+      expect(result.options).to eq({running_total: []})
+    end
+  end
+
   context 'with events with the same timestamp' do
     let(:events_values) do
       [
         {timestamp: Time.zone.parse('2023-08-01 00:00:00.000'), value: 3},
-        {timestamp: Time.zone.parse('2023-08-01 00:00:00.000'), value: 3},
+        {timestamp: Time.zone.parse('2023-08-01 00:00:00.000'), value: 3}
       ]
     end
 
@@ -125,17 +140,18 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
 
     let(:events_values) { [] }
 
-    let(:quantified_event) do
+    let(:cached_aggregation) do
       create(
-        :quantified_event,
-        billable_metric:,
+        :cached_aggregation,
+        charge:,
+        organization:,
         external_subscription_id: subscription.external_id,
-        added_at: from_datetime - 1.day,
-        properties: {QuantifiedEvent::RECURRING_TOTAL_UNITS => 1000},
+        timestamp: from_datetime - 1.day,
+        current_aggregation: 1000
       )
     end
 
-    before { quantified_event }
+    before { cached_aggregation }
 
     it 'uses the persisted recurring value as initial value' do
       result = aggregator.aggregate
@@ -147,8 +163,8 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
       expect(result.recurring_updated_at).to eq(from_datetime)
     end
 
-    context 'without quantified events' do
-      let(:quantified_event) {}
+    context 'without cached_aggregation' do
+      let(:cached_aggregation) {}
 
       it 'falls back on 0' do
         result = aggregator.aggregate
@@ -166,7 +182,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
             :subscription,
             :terminated,
             started_at: DateTime.parse('2022-01-01 22:22:22'),
-            terminated_at: DateTime.parse('2023-04-01 22:22:21'),
+            terminated_at: DateTime.parse('2023-04-01 22:22:21')
           )
         end
 
@@ -178,7 +194,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
             started_at: DateTime.parse('2023-04-01 22:22:22'),
             previous_subscription:,
             customer:,
-            external_id: previous_subscription.external_id,
+            external_id: previous_subscription.external_id
           )
         end
 
@@ -192,7 +208,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
             subscription: previous_subscription,
             customer:,
             timestamp: Time.zone.parse('2023-03-01 22:22:22'),
-            properties: {value: 10},
+            properties: {value: 10}
           )
         end
 
@@ -219,7 +235,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
           {timestamp: DateTime.parse('2023-08-01 02:00:00'), value: -4},
           {timestamp: DateTime.parse('2023-08-01 04:00:00'), value: -2},
           {timestamp: DateTime.parse('2023-08-01 05:00:00'), value: 10},
-          {timestamp: DateTime.parse('2023-08-01 05:30:00'), value: -10},
+          {timestamp: DateTime.parse('2023-08-01 05:30:00'), value: -10}
         ]
       end
 
@@ -242,7 +258,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
 
     let(:events_values) do
       [
-        {timestamp: DateTime.parse('2023-08-01 00:00:00.000'), value: 1000, region: 'europe'},
+        {timestamp: DateTime.parse('2023-08-01 00:00:00.000'), value: 1000, region: 'europe'}
       ]
     end
 
@@ -274,7 +290,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
         {timestamp: Time.zone.parse('2023-08-01 02:00:00'), value: -4, agent_name: 'frodo'},
         {timestamp: Time.zone.parse('2023-08-01 04:00:00'), value: -2, agent_name: 'frodo'},
         {timestamp: Time.zone.parse('2023-08-01 05:00:00'), value: 10, agent_name: 'frodo'},
-        {timestamp: Time.zone.parse('2023-08-01 05:30:00'), value: -10, agent_name: 'frodo'},
+        {timestamp: Time.zone.parse('2023-08-01 05:30:00'), value: -10, agent_name: 'frodo'}
       ]
     end
 
@@ -305,6 +321,21 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
       end
     end
 
+    context 'when bypass_aggregation is set to true' do
+      let(:bypass_aggregation) { true }
+
+      it 'returns an empty result' do
+        result = aggregator.aggregate
+
+        expect(result.aggregations.count).to eq(1)
+
+        aggregation = result.aggregations.first
+        expect(aggregation.aggregation).to eq(0)
+        expect(aggregation.count).to eq(0)
+        expect(aggregation.grouped_by).to eq({'agent_name' => nil})
+      end
+    end
+
     context 'with events with the same timestamp' do
       let(:events_values) do
         [
@@ -312,7 +343,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
           {timestamp: Time.zone.parse('2023-08-01 00:00:00.000'), value: 3, agent_name: 'aragorn'},
 
           {timestamp: Time.zone.parse('2023-08-01 00:00:00.000'), value: 3, agent_name: 'frodo'},
-          {timestamp: Time.zone.parse('2023-08-01 00:00:00.000'), value: 3, agent_name: 'frodo'},
+          {timestamp: Time.zone.parse('2023-08-01 00:00:00.000'), value: 3, agent_name: 'frodo'}
         ]
       end
 
@@ -334,29 +365,31 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
 
       let(:events_values) { [] }
 
-      let(:quantified_events) do
+      let(:cached_aggregations) do
         [
           create(
-            :quantified_event,
-            billable_metric:,
+            :cached_aggregation,
+            organization:,
+            charge:,
             external_subscription_id: subscription.external_id,
-            added_at: from_datetime - 1.day,
-            properties: {QuantifiedEvent::RECURRING_TOTAL_UNITS => '1000'},
-            grouped_by: {'agent_name' => 'aragorn'},
+            timestamp: from_datetime - 1.day,
+            current_aggregation: 1000,
+            grouped_by: {'agent_name' => 'aragorn'}
           ),
 
           create(
-            :quantified_event,
-            billable_metric:,
+            :cached_aggregation,
+            organization:,
+            charge:,
             external_subscription_id: subscription.external_id,
-            added_at: from_datetime - 1.day,
-            properties: {QuantifiedEvent::RECURRING_TOTAL_UNITS => '1000'},
-            grouped_by: {'agent_name' => 'frodo'},
-          ),
+            timestamp: from_datetime - 1.day,
+            current_aggregation: 1000,
+            grouped_by: {'agent_name' => 'frodo'}
+          )
         ]
       end
 
-      before { quantified_events }
+      before { cached_aggregations }
 
       it 'uses the persisted recurring value as initial value' do
         result = aggregator.aggregate
@@ -373,8 +406,8 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
         end
       end
 
-      context 'without quantified events' do
-        let(:quantified_events) {}
+      context 'without cached aggregation events' do
+        let(:cached_aggregations) {}
 
         it 'returns an empty result' do
           result = aggregator.aggregate
@@ -393,7 +426,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
               :subscription,
               :terminated,
               started_at: DateTime.parse('2022-01-01 22:22:22'),
-              terminated_at: DateTime.parse('2023-04-01 22:22:21'),
+              terminated_at: DateTime.parse('2023-04-01 22:22:21')
             )
           end
 
@@ -405,7 +438,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
               started_at: DateTime.parse('2023-04-01 22:22:22'),
               previous_subscription:,
               customer:,
-              external_id: previous_subscription.external_id,
+              external_id: previous_subscription.external_id
             )
           end
 
@@ -419,7 +452,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
               subscription: previous_subscription,
               customer:,
               timestamp: Time.zone.parse('2023-03-01 22:22:22'),
-              properties: {value: 10, agent_name: 'aragorn'},
+              properties: {value: 10, agent_name: 'aragorn'}
             )
 
             create(
@@ -429,7 +462,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
               subscription: previous_subscription,
               customer:,
               timestamp: Time.zone.parse('2023-03-01 22:22:22'),
-              properties: {value: 10, agent_name: 'frodo'},
+              properties: {value: 10, agent_name: 'frodo'}
             )
           end
 
@@ -469,7 +502,7 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
             {timestamp: DateTime.parse('2023-08-01 02:00:00'), value: -4, agent_name: 'frodo'},
             {timestamp: DateTime.parse('2023-08-01 04:00:00'), value: -2, agent_name: 'frodo'},
             {timestamp: DateTime.parse('2023-08-01 05:00:00'), value: 10, agent_name: 'frodo'},
-            {timestamp: DateTime.parse('2023-08-01 05:30:00'), value: -10, agent_name: 'frodo'},
+            {timestamp: DateTime.parse('2023-08-01 05:30:00'), value: -10, agent_name: 'frodo'}
           ]
         end
 
@@ -501,9 +534,9 @@ RSpec.describe BillableMetrics::Aggregations::WeightedSumService, type: :service
             timestamp: DateTime.parse('2023-08-01 00:00:00.000'),
             value: 1000,
             region: 'europe',
-            agent_name: 'aragorn',
+            agent_name: 'aragorn'
           },
-          {timestamp: DateTime.parse('2023-08-01 00:00:00.000'), value: 1000, region: 'europe', agent_name: 'frodo'},
+          {timestamp: DateTime.parse('2023-08-01 00:00:00.000'), value: 1000, region: 'europe', agent_name: 'frodo'}
         ]
       end
 

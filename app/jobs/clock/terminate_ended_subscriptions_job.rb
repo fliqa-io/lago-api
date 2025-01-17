@@ -2,7 +2,15 @@
 
 module Clock
   class TerminateEndedSubscriptionsJob < ApplicationJob
-    queue_as 'clock'
+    include SentryCronConcern
+
+    queue_as do
+      if ActiveModel::Type::Boolean.new.cast(ENV['SIDEKIQ_CLOCK'])
+        :clock_worker
+      else
+        :clock
+      end
+    end
 
     def perform
       Subscription
@@ -11,7 +19,7 @@ module Clock
         .where(
           "DATE(subscriptions.ending_at#{Utils::Timezone.at_time_zone_sql}) = " \
           "DATE(?#{Utils::Timezone.at_time_zone_sql})",
-          Time.current,
+          Time.current
         )
         .find_each do |subscription|
           Subscriptions::TerminateService.call(subscription:)

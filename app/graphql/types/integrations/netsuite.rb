@@ -13,11 +13,12 @@ module Types
       field :has_mappings_configured, Boolean
       field :id, ID, null: false
       field :name, String, null: false
-      field :script_endpoint_url, String, null: true
+      field :script_endpoint_url, String, null: false
       field :sync_credit_notes, Boolean
       field :sync_invoices, Boolean
       field :sync_payments, Boolean
-      field :sync_sales_orders, Boolean
+      field :token_id, String, null: true
+      field :token_secret, String, null: true
 
       # NOTE: Client secret is a sensitive information. It should not be sent back to the
       #       front end application. Instead we send an obfuscated value
@@ -25,10 +26,15 @@ module Types
         "#{"•" * 8}…#{object.client_secret[-3..]}"
       end
 
+      def token_secret
+        return nil unless object.token_secret
+
+        "#{"•" * 8}…#{object.token_secret[-3..]}"
+      end
+
       def has_mappings_configured
         object.integration_collection_mappings
           .where(type: 'IntegrationCollectionMappings::NetsuiteCollectionMapping')
-          .where(mapping_type: :fallback_item)
           .any?
       end
     end

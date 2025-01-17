@@ -26,14 +26,21 @@ module Plans
 
         if params[:tax_codes]
           taxes_result = Plans::ApplyTaxesService.call(plan: new_plan, tax_codes: params[:tax_codes])
-          return taxes_result unless taxes_result.success?
+          taxes_result.raise_if_error!
         end
 
-        plan.charges.includes(:group_properties).find_each do |charge|
+        plan.charges.find_each do |charge|
           charge_params = (
             params[:charges]&.find { |p| p[:id] == charge.id } || {}
           ).merge(plan_id: new_plan.id)
           Charges::OverrideService.call(charge:, params: charge_params)
+        end
+
+        if params[:usage_thresholds].present? &&
+            License.premium? &&
+            plan.organization.premium_integrations.include?('progressive_billing')
+
+          UsageThresholds::OverrideService.call(usage_thresholds_params: params[:usage_thresholds], new_plan: new_plan)
         end
 
         if params[:minimum_commitment].present? && License.premium?
@@ -41,7 +48,7 @@ module Plans
           minimum_commitment_params = params[:minimum_commitment].merge(plan_id: new_plan.id)
 
           commitment_override_result = Commitments::OverrideService.call(commitment:, params: minimum_commitment_params)
-          return commitment_override_result unless commitment_override_result.success?
+          commitment_override_result.raise_if_error!
         end
 
         result.plan = new_plan
@@ -52,6 +59,8 @@ module Plans
       result
     rescue ActiveRecord::RecordInvalid => e
       result.record_validation_failure!(record: e.record)
+    rescue BaseService::FailedResult => e
+      e.result
     end
 
     private
@@ -79,8 +88,8 @@ module Plans
           nb_graduated_charges: count_by_charge_model['graduated'] || 0,
           nb_package_charges: count_by_charge_model['package'] || 0,
           organization_id: plan.organization_id,
-          parent_id: plan.parent_id,
-        },
+          parent_id: plan.parent_id
+        }
       )
     end
   end

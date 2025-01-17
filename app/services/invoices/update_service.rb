@@ -17,14 +17,14 @@ module Invoices
       if params.key?(:payment_status) && !valid_payment_status?(params[:payment_status])
         return result.single_validation_failure!(
           field: :payment_status,
-          error_code: 'value_is_invalid',
+          error_code: 'value_is_invalid'
         )
       end
 
       unless valid_metadata_count?(metadata: params[:metadata])
         return result.single_validation_failure!(
           field: :metadata,
-          error_code: 'invalid_count',
+          error_code: 'invalid_count'
         )
       end
 
@@ -40,6 +40,14 @@ module Invoices
       end
 
       ActiveRecord::Base.transaction do
+        if invoice.payment_overdue? && invoice.payment_succeeded?
+          invoice.payment_overdue = false
+
+          if invoice.payment_requests.where.not(dunning_campaign_id: nil).exists?
+            invoice.customer.reset_dunning_campaign!
+          end
+        end
+
         invoice.save!
 
         Invoices::Metadata::UpdateService.call(invoice:, params: params[:metadata]) if params[:metadata]
@@ -48,11 +56,12 @@ module Invoices
       if params.key?(:payment_status)
         handle_prepaid_credits(params[:payment_status])
         track_payment_status_changed
-        deliver_webhook if old_payment_status != params[:payment_status]
+        deliver_webhook if old_payment_status != params[:payment_status] && invoice.visible?
         Invoices::UpdateFeesPaymentStatusJob.perform_later(invoice)
       end
 
       result.invoice = invoice
+      Integrations::Aggregator::Invoices::Hubspot::UpdateJob.perform_later(invoice:) if invoice.should_update_hubspot_invoice?
       result
     rescue ActiveRecord::RecordInvalid => e
       result.record_validation_failure!(record: e.record)
@@ -73,8 +82,8 @@ module Invoices
         properties: {
           organization_id: invoice.organization.id,
           invoice_id: invoice.id,
-          payment_status: invoice.payment_status,
-        },
+          payment_status: invoice.payment_status
+        }
       )
     end
 

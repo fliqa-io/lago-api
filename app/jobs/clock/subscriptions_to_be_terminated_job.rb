@@ -2,7 +2,15 @@
 
 module Clock
   class SubscriptionsToBeTerminatedJob < ApplicationJob
-    queue_as 'clock'
+    include SentryCronConcern
+
+    queue_as do
+      if ActiveModel::Type::Boolean.new.cast(ENV['SIDEKIQ_CLOCK'])
+        :clock_worker
+      else
+        :clock
+      end
+    end
 
     def perform
       Subscription
@@ -12,13 +20,12 @@ module Clock
         .active
         .where(
           'DATE(subscriptions.ending_at::timestamptz) IN (?)',
-          sent_at_dates,
+          sent_at_dates
         )
         .where('webhooks.id IS NULL OR webhooks.created_at::date != ?', Time.current.to_date)
+        .distinct
         .find_each do |subscription|
-          if subscription.customer.organization.webhook_endpoints.any?
-            SendWebhookJob.perform_later('subscription.termination_alert', subscription)
-          end
+          SendWebhookJob.perform_later('subscription.termination_alert', subscription)
         end
     end
 

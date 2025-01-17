@@ -20,7 +20,6 @@ RSpec.describe Mutations::Integrations::Netsuite::Update, type: :graphql do
           name,
           clientId,
           clientSecret,
-          syncSalesOrders,
           syncInvoices,
           syncCreditNotes,
           syncPayments,
@@ -52,9 +51,9 @@ RSpec.describe Mutations::Integrations::Netsuite::Update, type: :graphql do
           id: integration.id,
           name:,
           code:,
-          scriptEndpointUrl: script_endpoint_url,
-        },
-      },
+          scriptEndpointUrl: script_endpoint_url
+        }
+      }
     )
 
     result_data = result['data']['updateNetsuiteIntegration']

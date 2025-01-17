@@ -13,7 +13,7 @@ describe 'Free Trial Billing Subscriptions Scenario', :scenarios, type: :request
       organization:,
       trial_period:,
       amount_cents: 5_000_000,
-      pay_in_advance: true,
+      pay_in_advance: true
     )
   end
 
@@ -23,14 +23,18 @@ describe 'Free Trial Billing Subscriptions Scenario', :scenarios, type: :request
       {
         external_customer_id: customer.external_id,
         external_id: customer.external_id,
-        plan_code: plan.code,
-      },
+        plan_code: plan.code
+      }
     )
   end
 
   def create_usage_event!
     create_event(
-      {code: billable_metric.code, transaction_id: SecureRandom.uuid, external_customer_id: customer.external_id},
+      {
+        code: billable_metric.code,
+        transaction_id: SecureRandom.uuid,
+        external_subscription_id: customer.external_id
+      }
     )
   end
 
@@ -89,8 +93,7 @@ describe 'Free Trial Billing Subscriptions Scenario', :scenarios, type: :request
         expect(customer.reload.invoices.count).to eq(0)
 
         plan.update! trial_period: 0 # disable trial to force billing
-        BillSubscriptionJob.perform_now(customer.subscriptions, Time.current, invoicing_reason: :subscription_starting)
-
+        BillSubscriptionJob.perform_now(customer.subscriptions.to_a, Time.current, invoicing_reason: :subscription_starting)
         expect(customer.reload.invoices.count).to eq(1)
 
         plan.update! trial_period: 10
@@ -136,8 +139,8 @@ describe 'Free Trial Billing Subscriptions Scenario', :scenarios, type: :request
           {
             external_customer_id: customer.external_id,
             external_id: customer.external_id,
-            plan_code: upgrade_plan.code,
-          },
+            plan_code: upgrade_plan.code
+          }
         )
         perform_billing
         expect(customer.reload.invoices.count).to eq(1)
@@ -193,8 +196,8 @@ describe 'Free Trial Billing Subscriptions Scenario', :scenarios, type: :request
             {
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
-              plan_code: upgrade_plan.code,
-            },
+              plan_code: upgrade_plan.code
+            }
           )
           perform_billing
           expect(customer.reload.invoices.count).to eq(1)
@@ -247,8 +250,8 @@ describe 'Free Trial Billing Subscriptions Scenario', :scenarios, type: :request
             {
               external_customer_id: customer.external_id,
               external_id: customer.external_id,
-              plan_code: upgrade_plan.code,
-            },
+              plan_code: upgrade_plan.code
+            }
           )
           perform_billing
           expect(customer.reload.invoices.count).to eq(1)
@@ -414,9 +417,10 @@ describe 'Free Trial Billing Subscriptions Scenario', :scenarios, type: :request
 
   context 'with free trial ending on billing day' do
     let(:trial_period) { 10 }
+    let(:timezone) { 'Europe/Paris' }
 
     it 'bills subscription and usage-based charges' do
-      start_time = Time.zone.parse('2024-03-22T12:12:00')
+      start_time = Time.zone.parse('2024-03-22T01:12:00')
       travel_to(start_time) do
         create_customer_subscription!
         expect(customer.reload.invoices.count).to eq(0)
@@ -428,7 +432,12 @@ describe 'Free Trial Billing Subscriptions Scenario', :scenarios, type: :request
 
       # NOTE: Subscriptions::BillingService will bill the subscription because it's billing day
       #       Subscriptions::FreeTrialBillingService will ignore it because the trial ends at 12:12:00
-      travel_to(Time.zone.parse('2024-04-01')) do
+      #
+      #   Time.current:                         31 Mar 2024 22:01:00 UTC +00:00
+      #   Time.current.in_time_zone(timezone):  01 Apr 2024 00:01:00 CEST +02:00
+      #   sub.trial_end_datetime:               01 Apr 2024 01:12:00 UTC +00:00
+      billing_day = Time.parse('2024-04-01T00:01:00').in_time_zone(timezone)
+      travel_to(billing_day) do
         perform_billing
         invoice = customer.invoices.order(created_at: :desc).sole
         expect(invoice.fees.subscription.first.amount_cents).to eq(5_000_000) # full fee, trial is over

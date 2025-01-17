@@ -11,43 +11,44 @@ module Integrations
         end
 
         def call
+          Integrations::Hubspot::Contacts::DeployPropertiesService.call(integration:)
+
+          throttle!(:anrok, :hubspot, :netsuite, :xero)
+
           response = http_client.put_with_response(params, headers)
+          body = JSON.parse(response.body)
 
-          deliver_success_webhook(customer:)
+          if body.is_a?(Hash)
+            process_hash_result(body)
+          else
+            process_string_result(body)
+          end
 
-          result.contact_id = response.body
           result
         rescue LagoHttpClient::HttpError => e
-          error = e.json_message
-          code = error['type']
-          message = error.dig('payload', 'message')
+          raise RequestLimitError(e) if request_limit_error?(e)
+
+          code = code(e)
+          message = message(e)
 
           deliver_error_webhook(customer:, code:, message:)
 
           result.service_failure!(code:, message:)
         end
 
+        delegate :customer, to: :integration_customer
+
         private
 
         attr_reader :integration_customer, :subsidiary_id
 
-        delegate :customer, to: :integration_customer
-
         def params
-          {
-            'type' => 'customer',
-            'recordId' => integration_customer.external_customer_id,
-            'values' => {
-              'companyname' => customer.name,
-              'subsidiary' => integration_customer.subsidiary_id,
-              'custentity_form_activeprospect_customer' => customer.name, # TODO: Will be removed
-              'email' => customer.email,
-              'phone' => customer.phone,
-            },
-            'options' => {
-              'isDynamic' => false,
-            },
-          }
+          Integrations::Aggregator::Contacts::Payloads::Factory.new_instance(
+            integration:,
+            integration_customer:,
+            customer:,
+            subsidiary_id:
+          ).update_body
         end
       end
     end

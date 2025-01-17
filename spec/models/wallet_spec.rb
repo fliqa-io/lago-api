@@ -5,13 +5,19 @@ require 'rails_helper'
 RSpec.describe Wallet, type: :model do
   subject(:wallet) { build(:wallet) }
 
+  it_behaves_like 'paper_trail traceable'
+
+  describe 'validations' do
+    it { is_expected.to validate_numericality_of(:rate_amount).is_greater_than(0) }
+  end
+
   describe 'currency=' do
     it 'assigns the currency to all amounts' do
       wallet.currency = 'CAD'
 
       expect(wallet).to have_attributes(
         balance_currency: 'CAD',
-        consumed_amount_currency: 'CAD',
+        consumed_amount_currency: 'CAD'
       )
     end
   end

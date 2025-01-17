@@ -7,7 +7,8 @@ module Wallets
       valid_paid_credits_amount? if args[:paid_credits]
       valid_granted_credits_amount? if args[:granted_credits]
       valid_expiration_at? if args[:expiration_at]
-      valid_recurring_transaction_rules? if args[:recurring_transaction_rules]
+      valid_recurring_transaction_rules? if args[:recurring_transaction_rules].present?
+      valid_metadata? if args[:transaction_metadata]
 
       if errors?
         result.validation_failure!(errors:)
@@ -27,7 +28,7 @@ module Wallets
       if result.current_customer.wallets.active.exists?
         return add_error(
           field: :customer,
-          error_code: 'wallet_already_exists',
+          error_code: 'wallet_already_exists'
         )
       end
 
@@ -66,25 +67,25 @@ module Wallets
     end
 
     def valid_recurring_transaction_rules?
-      if args[:recurring_transaction_rules].count != 1
+      if args[:recurring_transaction_rules].count > 1
         return add_error(field: :recurring_transaction_rules, error_code: 'invalid_number_of_recurring_rules')
       end
 
-      recurring_rule = args[:recurring_transaction_rules].first
+      unless Wallets::RecurringTransactionRules::ValidateService.call(params: args[:recurring_transaction_rules].first)
+        add_error(field: :recurring_transaction_rules, error_code: "invalid_recurring_rule")
+      end
+    end
 
-      if recurring_rule[:rule_type]&.to_s == 'interval' &&
-          RecurringTransactionRule.intervals.key?(recurring_rule[:interval])
-
-        return true
+    def valid_metadata?
+      validator = ::Validators::MetadataValidator.new(args[:transaction_metadata])
+      unless validator.valid?
+        validator.errors.each do |field, error_code|
+          add_error(field: field, error_code: error_code)
+        end
+        return false
       end
 
-      if recurring_rule[:rule_type]&.to_s == 'threshold' &&
-          ::Validators::DecimalAmountService.new(recurring_rule[:threshold_credits]).valid_decimal?
-
-        return true
-      end
-
-      add_error(field: :recurring_transaction_rules, error_code: 'invalid_recurring_rule')
+      true
     end
   end
 end

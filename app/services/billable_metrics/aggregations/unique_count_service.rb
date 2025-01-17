@@ -4,13 +4,15 @@ module BillableMetrics
   module Aggregations
     class UniqueCountService < BillableMetrics::Aggregations::BaseService
       def initialize(...)
-        super(...)
+        super
 
         event_store.aggregation_property = billable_metric.field_name
         event_store.use_from_boundary = !billable_metric.recurring
       end
 
       def compute_aggregation(options: {})
+        return empty_result if should_bypass_aggregation?
+
         aggregation = event_store.unique_count.ceil(5)
 
         if options[:is_pay_in_advance] && options[:is_current_usage]
@@ -34,6 +36,8 @@ module BillableMetrics
       #       as pay in advance aggregation will be computed on a single group
       #       with the grouped_by_values filter
       def compute_grouped_by_aggregation(options: {})
+        return empty_results if should_bypass_aggregation?
+
         aggregations = event_store.grouped_unique_count
         return empty_results if aggregations.blank?
 
@@ -70,14 +74,14 @@ module BillableMetrics
         cached_aggregation = find_cached_aggregation(
           with_from_datetime: from_datetime,
           with_to_datetime: to_datetime,
-          grouped_by: grouped_by_values,
+          grouped_by: grouped_by_values
         )
 
         unless cached_aggregation
           handle_event_metadata(
             current_aggregation: newly_applied_units,
             max_aggregation: newly_applied_units,
-            units_applied: newly_applied_units,
+            units_applied: newly_applied_units
           )
 
           return newly_applied_units
@@ -115,7 +119,7 @@ module BillableMetrics
         (1..result.aggregation).to_a
       end
 
-      def compute_per_event_aggregation
+      def compute_per_event_aggregation(exclude_event:)
         (0...event_store.events_values(force_from: true).count).map { |_| 1 }
       end
 

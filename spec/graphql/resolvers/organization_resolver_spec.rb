@@ -24,7 +24,7 @@ RSpec.describe Resolvers::OrganizationResolver, type: :graphql do
       current_user: membership.user,
       current_organization: organization,
       query:,
-      variables: {},
+      variables: {}
     )
 
     data = result['data']['organization']
@@ -45,7 +45,7 @@ RSpec.describe Resolvers::OrganizationResolver, type: :graphql do
             taxIdentificationNumber
             apiKey
             webhookUrl
-            billingConfiguration { invoiceFooter vatRate }
+            billingConfiguration { invoiceFooter }
             emailSettings
             taxes { id code }
           }
@@ -59,16 +59,15 @@ RSpec.describe Resolvers::OrganizationResolver, type: :graphql do
         current_organization: organization,
         permissions: Permission::ADMIN_PERMISSIONS_HASH,
         query:,
-        variables: {},
+        variables: {}
       )
 
       data = result['data']['organization']
 
       aggregate_failures do
         expect(data['taxIdentificationNumber']).to eq(organization.tax_identification_number)
-        expect(data['apiKey']).to eq(organization.api_key)
+        expect(data['apiKey']).to eq(organization.api_keys.first.value)
         expect(data['webhookUrl']).to eq(organization.webhook_endpoints.first.webhook_url)
-        expect(data['billingConfiguration']['vatRate']).to eq(organization.vat_rate)
         expect(data['billingConfiguration']['invoiceFooter']).to eq(organization.invoice_footer)
         expect(data['emailSettings']).to eq(organization.email_settings.map { _1.tr('.', '_') })
         expect(data['taxes']).to eq []

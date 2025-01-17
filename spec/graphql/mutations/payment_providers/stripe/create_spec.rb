@@ -33,16 +33,18 @@ RSpec.describe Mutations::PaymentProviders::Stripe::Create, type: :graphql do
     result = execute_graphql(
       current_user: membership.user,
       current_organization: membership.organization,
-      permissions: required_permission,
+      # You wouldn't have `create` without `view` permission
+      # `view` is necessary to retrieve the created record in the response
+      permissions: [required_permission, 'organization:integrations:view'],
       query: mutation,
       variables: {
         input: {
           secretKey: secret_key,
           code:,
           name:,
-          successRedirectUrl: success_redirect_url,
-        },
-      },
+          successRedirectUrl: success_redirect_url
+        }
+      }
     )
 
     result_data = result['data']['addStripePaymentProvider']

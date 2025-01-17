@@ -22,21 +22,20 @@ module Fees
 
           new_fee = Fee.new(
             invoice:,
+            organization:,
             subscription:,
             fee_type: :commitment,
             invoiceable_type: 'Commitment',
             invoiceable_id: minimum_commitment.id,
             amount_cents: true_up_fee_result.amount_cents,
+            precise_amount_cents: true_up_fee_result.precise_amount_cents,
             unit_amount_cents: true_up_fee_result.amount_cents,
             amount_currency: subscription.plan.amount_currency,
             invoice_display_name: minimum_commitment.invoice_name,
             units: 1,
             precise_unit_amount:,
-            taxes_amount_cents: 0,
+            taxes_amount_cents: 0
           )
-
-          taxes_result = Fees::ApplyTaxesService.call(fee: new_fee)
-          taxes_result.raise_if_error!
 
           new_fee.save!
           result.fee = new_fee
@@ -51,9 +50,10 @@ module Fees
         attr_reader :minimum_commitment, :invoice_subscription
 
         delegate :invoice, :subscription, to: :invoice_subscription
+        delegate :organization, to: :invoice
 
         def invoice_has_minimum_commitment_fee?
-          invoice.fees.commitment_kind.where(subscription:).any? { |fee| fee.invoiceable.minimum_commitment? }
+          invoice.fees.commitment.where(subscription:).any? { |fee| fee.invoiceable.minimum_commitment? }
         end
       end
     end

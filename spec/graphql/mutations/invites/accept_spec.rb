@@ -34,9 +34,9 @@ RSpec.describe Mutations::Invites::Accept, type: :graphql do
             input: {
               email: invite.email,
               password:,
-              token: invite.token,
-            },
-          },
+              token: invite.token
+            }
+          }
         )
 
         data = result['data']['acceptInvite']
@@ -58,9 +58,9 @@ RSpec.describe Mutations::Invites::Accept, type: :graphql do
             input: {
               email: invite.email,
               password:,
-              token: invite.token,
-            },
-          },
+              token: invite.token
+            }
+          }
         )
 
         expect(result['errors'].first['extensions']['status']).to eq(404)
@@ -81,9 +81,9 @@ RSpec.describe Mutations::Invites::Accept, type: :graphql do
             input: {
               email: invite.email,
               password:,
-              token: invite.token,
-            },
-          },
+              token: invite.token
+            }
+          }
         )
 
         expect(result['errors'].first['extensions']['status']).to eq(404)

@@ -3,7 +3,7 @@
 class KarafkaApp < Karafka::App
   setup do |config|
     config.kafka = {
-      'bootstrap.servers': ENV['LAGO_KAFKA_BOOTSTRAP_SERVERS'],
+      'bootstrap.servers': ENV['LAGO_KAFKA_BOOTSTRAP_SERVERS']
     }
 
     if ENV['LAGO_KAFKA_SECURITY_PROTOCOL'].present?
@@ -43,14 +43,14 @@ class KarafkaApp < Karafka::App
       Karafka.logger,
       # If you set this to true, logs will contain each message details
       # Please note, that this can be extensive
-      log_messages: false,
-    ),
+      log_messages: false
+    )
   )
-
-  Karafka::Web.setup do |config|
-    # Set this to false in all apps except one
-    config.processing.active = false
-  end
 end
 
-Karafka::Process.tags.add(:application_name, 'Lago-API')
+Karafka::Web.setup do |config|
+  # Set this to false in all apps except one
+  config.processing.active = false
+end
+
+Karafka::Process.tags.add(:application_name, 'lago-api')

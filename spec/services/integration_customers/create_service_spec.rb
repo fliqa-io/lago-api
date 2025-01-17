@@ -7,36 +7,22 @@ RSpec.describe IntegrationCustomers::CreateService, type: :service do
   let(:organization) { membership.organization }
   let(:membership) { create(:membership) }
   let(:customer) { create(:customer, organization:) }
+  let(:integration_type) { 'netsuite' }
 
   describe '#call' do
     subject(:service_call) { described_class.call(params:, integration:, customer:) }
 
     let(:params) do
       {
-        integration: 'netsuite',
+        integration_type:,
         integration_code:,
         sync_with_provider:,
         external_customer_id:,
-        subsidiary_id:,
+        subsidiary_id:
       }
     end
 
     let(:subsidiary_id) { '1' }
-
-    context 'without netsuite premium integration present' do
-      let(:integration_code) { 'not_exists' }
-      let(:sync_with_provider) { true }
-      let(:external_customer_id) { nil }
-
-      it 'returns an error' do
-        result = service_call
-
-        aggregate_failures do
-          expect(result).not_to be_success
-          expect(result.error.code).to eq('premium_integration_missing')
-        end
-      end
-    end
 
     context 'with netsuite premium integration present' do
       let(:integration_code) { integration.code }
@@ -87,6 +73,23 @@ RSpec.describe IntegrationCustomers::CreateService, type: :service do
           it 'creates integration customer' do
             expect { service_call }.to change(IntegrationCustomers::BaseCustomer, :count).by(1)
           end
+
+          context 'when the integration type is salesforce' do
+            let(:integration) { create(:salesforce_integration, organization:) }
+            let(:integration_type) { 'salesforce' }
+
+            it 'returns integration customer with sync_with_provider true' do
+              result = service_call
+
+              aggregate_failures do
+                expect(aggregator_contacts_create_service).not_to have_received(:call)
+                expect(result).to be_success
+                expect(result.integration_customer).to eq(integration_customer)
+                expect(result.integration_customer.external_customer_id).to eq(external_customer_id)
+                expect(result.integration_customer.sync_with_provider).to eq(true)
+              end
+            end
+          end
         end
 
         context 'when customer external id is not present' do
@@ -103,7 +106,25 @@ RSpec.describe IntegrationCustomers::CreateService, type: :service do
           end
 
           it 'creates integration customer' do
-            expect { service_call }.to change(IntegrationCustomers::BaseCustomer, :count).by(1)
+            expect { service_call }.to change(IntegrationCustomers::NetsuiteCustomer, :count).by(1)
+          end
+
+          context 'with anrok integration' do
+            let(:integration) { create(:anrok_integration, organization:) }
+            let(:params) do
+              {
+                integration_type: 'anrok',
+                integration_code:,
+                sync_with_provider:,
+                external_customer_id:
+              }
+            end
+
+            before { organization.update!(premium_integrations: ['anrok']) }
+
+            it 'creates integration customer' do
+              expect { service_call }.to change(IntegrationCustomers::AnrokCustomer, :count).by(1)
+            end
           end
         end
       end

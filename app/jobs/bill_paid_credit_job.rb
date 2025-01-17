@@ -1,7 +1,13 @@
 # frozen_string_literal: true
 
 class BillPaidCreditJob < ApplicationJob
-  queue_as 'billing'
+  queue_as do
+    if ActiveModel::Type::Boolean.new.cast(ENV['SIDEKIQ_BILLING'])
+      :billing
+    else
+      :default
+    end
+  end
 
   retry_on Sequenced::SequenceError
 
@@ -9,7 +15,7 @@ class BillPaidCreditJob < ApplicationJob
     result = Invoices::PaidCreditService.call(
       wallet_transaction:,
       timestamp:,
-      invoice:,
+      invoice:
     )
     return result if result.success?
 
@@ -19,7 +25,7 @@ class BillPaidCreditJob < ApplicationJob
     self.class.set(wait: 3.seconds).perform_later(
       wallet_transaction,
       timestamp,
-      invoice: result.invoice,
+      invoice: result.invoice
     )
   end
 end

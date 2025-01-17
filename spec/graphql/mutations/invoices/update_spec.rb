@@ -35,11 +35,11 @@ RSpec.describe Mutations::Invoices::Update, type: :graphql do
           metadata: [
             {
               key: 'test-key',
-              value: 'value',
-            },
-          ],
-        },
-      },
+              value: 'value'
+            }
+          ]
+        }
+      }
     )
 
     result_data = result['data']['updateInvoice']
@@ -61,14 +61,14 @@ RSpec.describe Mutations::Invoices::Update, type: :graphql do
         variables: {
           input: {
             id: '1234',
-            paymentStatus: 'succeeded',
-          },
-        },
+            paymentStatus: 'succeeded'
+          }
+        }
       )
 
       expect_graphql_error(
         result:,
-        message: 'Resource not found',
+        message: 'Resource not found'
       )
     end
   end

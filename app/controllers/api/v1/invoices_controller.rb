@@ -4,11 +4,11 @@ module Api
   module V1
     class InvoicesController < Api::BaseController
       def create
-        result = Invoices::CreateService.new(
+        result = Invoices::CreateOneOffService.new(
           customer:,
           currency: create_params[:currency],
           fees: create_params[:fees],
-          timestamp: Time.current.to_i,
+          timestamp: Time.current.to_i
         ).call
 
         if result.success?
@@ -19,12 +19,12 @@ module Api
       end
 
       def update
-        invoice = current_organization.invoices.not_generating.find_by(id: params[:id])
+        invoice = current_organization.invoices.visible.find_by(id: params[:id])
 
         result = Invoices::UpdateService.new(
           invoice:,
           params: update_params.to_h.deep_symbolize_keys,
-          webhook_notification: true,
+          webhook_notification: true
         ).call
 
         if result.success?
@@ -35,7 +35,7 @@ module Api
       end
 
       def show
-        invoice = current_organization.invoices.not_generating.find_by(id: params[:id])
+        invoice = current_organization.invoices.visible.find_by(id: params[:id])
 
         return not_found_error(resource: 'invoice') unless invoice
 
@@ -43,31 +43,39 @@ module Api
       end
 
       def index
-        invoices = current_organization.invoices.not_generating
-        if params[:external_customer_id]
-          invoices = invoices.joins(:customer).where(customers: {external_id: params[:external_customer_id]})
-        end
-
-        if valid_payment_status?(params[:payment_status])
-          invoices = invoices.where(payment_status: params[:payment_status])
-        end
-
-        invoices = invoices.where(status: params[:status]) if valid_status?(params[:status])
-        invoices = invoices.where(date_from_criteria) if valid_date?(params[:issuing_date_from])
-        invoices = invoices.where(date_to_criteria) if valid_date?(params[:issuing_date_to])
-        invoices = invoices.order(created_at: :desc)
-          .page(params[:page])
-          .per(params[:per_page] || PER_PAGE)
-
-        render(
-          json: ::CollectionSerializer.new(
-            invoices,
-            ::V1::InvoiceSerializer,
-            collection_name: 'invoices',
-            meta: pagination_metadata(invoices),
-            includes: %i[customer metadata applied_taxes],
-          ),
+        result = InvoicesQuery.call(
+          organization: current_organization,
+          pagination: {
+            page: params[:page],
+            limit: params[:per_page] || PER_PAGE
+          },
+          search_term: params[:search_term],
+          filters: {
+            payment_status: (params[:payment_status] if valid_payment_status?(params[:payment_status])),
+            payment_dispute_lost: params[:payment_dispute_lost],
+            payment_overdue: (params[:payment_overdue] if %w[true false].include?(params[:payment_overdue])),
+            status: (params[:status] if valid_status?(params[:status])),
+            currency: params[:currency],
+            customer_external_id: params[:external_customer_id],
+            invoice_type: params[:invoice_type],
+            issuing_date_from: (Date.strptime(params[:issuing_date_from]) if valid_date?(params[:issuing_date_from])),
+            issuing_date_to: (Date.strptime(params[:issuing_date_to]) if valid_date?(params[:issuing_date_to]))
+          }
         )
+
+        if result.success?
+          render(
+            json: ::CollectionSerializer.new(
+              result.invoices.includes(:metadata, :applied_taxes),
+              ::V1::InvoiceSerializer,
+              collection_name: 'invoices',
+              meta: pagination_metadata(result.invoices),
+              includes: %i[customer integration_customers metadata applied_taxes]
+            )
+          )
+        else
+          render_error_response(result)
+        end
       end
 
       def download
@@ -79,8 +87,8 @@ module Api
           return render(
             json: ::V1::InvoiceSerializer.new(
               invoice,
-              root_name: 'invoice',
-            ),
+              root_name: 'invoice'
+            )
           )
         end
 
@@ -90,7 +98,7 @@ module Api
       end
 
       def refresh
-        invoice = current_organization.invoices.not_generating.find_by(id: params[:id])
+        invoice = current_organization.invoices.visible.find_by(id: params[:id])
         return not_found_error(resource: 'invoice') unless invoice
 
         result = Invoices::RefreshDraftService.call(invoice:)
@@ -105,7 +113,7 @@ module Api
         invoice = current_organization.invoices.draft.find_by(id: params[:id])
         return not_found_error(resource: 'invoice') unless invoice
 
-        result = Invoices::FinalizeService.call(invoice:)
+        result = Invoices::RefreshDraftAndFinalizeService.call(invoice:)
         if result.success?
           render_invoice(result.invoice)
         else
@@ -114,7 +122,7 @@ module Api
       end
 
       def void
-        invoice = current_organization.invoices.not_generating.find_by(id: params[:id])
+        invoice = current_organization.invoices.visible.find_by(id: params[:id])
 
         result = Invoices::VoidService.call(invoice:)
         if result.success?
@@ -125,7 +133,7 @@ module Api
       end
 
       def lose_dispute
-        invoice = current_organization.invoices.not_generating.find_by(id: params[:id])
+        invoice = current_organization.invoices.visible.find_by(id: params[:id])
 
         result = Invoices::LoseDisputeService.call(invoice:, payment_dispute_lost_at: DateTime.current)
         if result.success?
@@ -136,7 +144,7 @@ module Api
       end
 
       def retry_payment
-        invoice = current_organization.invoices.not_generating.find_by(id: params[:id])
+        invoice = current_organization.invoices.visible.find_by(id: params[:id])
         return not_found_error(resource: 'invoice') unless invoice
 
         result = Invoices::Payments::RetryService.new(invoice:).call
@@ -145,8 +153,20 @@ module Api
         head(:ok)
       end
 
+      def retry
+        invoice = current_organization.invoices.visible.find_by(id: params[:id])
+        return not_found_error(resource: 'invoice') unless invoice
+
+        result = Invoices::RetryService.new(invoice:).call
+        if result.success?
+          render_invoice(result.invoice)
+        else
+          render_error_response(result)
+        end
+      end
+
       def payment_url
-        invoice = current_organization.invoices.not_generating.includes(:customer).find_by(id: params[:id])
+        invoice = current_organization.invoices.visible.includes(:customer).find_by(id: params[:id])
         return not_found_error(resource: 'invoice') unless invoice
 
         result = ::Invoices::Payments::GeneratePaymentUrlService.call(invoice:)
@@ -156,9 +176,22 @@ module Api
             json: ::V1::PaymentProviders::InvoicePaymentSerializer.new(
               invoice,
               root_name: 'invoice_payment_details',
-              payment_url: result.payment_url,
-            ),
+              payment_url: result.payment_url
+            )
           )
+        else
+          render_error_response(result)
+        end
+      end
+
+      def sync_salesforce_id
+        invoice = current_organization.invoices.visible.find_by(id: params[:id])
+        return not_found_error(resource: 'invoice') unless invoice
+
+        result = Invoices::SyncSalesforceIdService.call(invoice:, params: sync_salesforce_id_params)
+
+        if result.success?
+          render_invoice(result.invoice)
         else
           render_error_response(result)
         end
@@ -167,7 +200,7 @@ module Api
       private
 
       def create_params
-        @create_params if defined? @create_params
+        return @create_params if defined? @create_params
 
         @create_params =
           params.require(:invoice)
@@ -180,8 +213,8 @@ module Api
                 :unit_amount_cents,
                 :units,
                 :description,
-                {tax_codes: []},
-              ],
+                {tax_codes: []}
+              ]
             ).to_h.deep_symbolize_keys
       end
 
@@ -191,8 +224,15 @@ module Api
           metadata: [
             :id,
             :key,
-            :value,
-          ],
+            :value
+          ]
+        )
+      end
+
+      def sync_salesforce_id_params
+        params.permit(
+          :external_id,
+          :integration_code
         )
       end
 
@@ -201,17 +241,9 @@ module Api
           json: ::V1::InvoiceSerializer.new(
             invoice,
             root_name: 'invoice',
-            includes: %i[customer subscriptions fees credits metadata applied_taxes],
-          ),
+            includes: %i[customer integration_customers subscriptions fees credits metadata applied_taxes error_details applied_invoice_custom_sections]
+          )
         )
-      end
-
-      def date_from_criteria
-        {issuing_date: Date.strptime(params[:issuing_date_from])..}
-      end
-
-      def date_to_criteria
-        {issuing_date: ..Date.strptime(params[:issuing_date_to])}
       end
 
       def valid_payment_status?(status)
@@ -225,8 +257,12 @@ module Api
       def customer
         Customer.find_by(
           external_id: create_params[:external_customer_id],
-          organization_id: current_organization.id,
+          organization_id: current_organization.id
         )
+      end
+
+      def resource_name
+        'invoice'
       end
     end
   end

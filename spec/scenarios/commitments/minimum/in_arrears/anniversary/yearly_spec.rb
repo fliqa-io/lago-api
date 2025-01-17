@@ -6,9 +6,6 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
   let(:organization) { create(:organization, webhook_url: nil) }
   let(:timezone) { 'UTC' }
   let(:customer) { create(:customer, organization:, timezone:) }
-  let(:pdf_generator) { instance_double(Utils::PdfGenerator) }
-  let(:pdf_file) { StringIO.new(File.read(Rails.root.join('spec/fixtures/blank.pdf'))) }
-  let(:pdf_result) { OpenStruct.new(io: pdf_file) }
 
   let(:plan) do
     create(
@@ -19,7 +16,7 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
       amount_cents: 10_000,
       interval: plan_interval,
       pay_in_advance: false,
-      bill_charges_monthly:,
+      bill_charges_monthly:
     )
   end
 
@@ -34,7 +31,7 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
       code: 'advance_metered',
       aggregation_type: 'sum_agg',
       field_name: 'total',
-      recurring: false,
+      recurring: false
     )
   end
 
@@ -46,7 +43,7 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
       code: 'metered',
       aggregation_type: 'sum_agg',
       field_name: 'total',
-      recurring: false,
+      recurring: false
     )
   end
 
@@ -58,7 +55,7 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
       code: 'recurring_advance',
       aggregation_type: 'sum_agg',
       field_name: 'total',
-      recurring: true,
+      recurring: true
     )
   end
 
@@ -68,9 +65,6 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
   let(:minimum_commitment) { create(:commitment, :minimum_commitment, plan:, amount_cents: 1_000_000) }
 
   before do
-    allow(Utils::PdfGenerator).to receive(:new).and_return(pdf_generator)
-    allow(pdf_generator).to receive(:call).and_return(pdf_result)
-
     minimum_commitment
 
     create(
@@ -79,7 +73,7 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
       billable_metric: billable_metric_advance_metered,
       invoiceable: true,
       plan:,
-      properties: {amount: '1'},
+      properties: {amount: '1'}
     )
 
     create(
@@ -87,7 +81,7 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
       billable_metric: billable_metric_metered,
       invoiceable: true,
       plan:,
-      properties: {amount: '1'},
+      properties: {amount: '1'}
     )
 
     create(
@@ -96,7 +90,7 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
       billable_metric: billable_metric_recurring_advance,
       invoiceable: true,
       plan:,
-      properties: {amount: '1'},
+      properties: {amount: '1'}
     )
 
     # Create the subscription
@@ -106,8 +100,8 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
           external_customer_id: customer.external_id,
           external_id: customer.external_id,
           plan_code: plan.code,
-          billing_time:,
-        },
+          billing_time:
+        }
       )
     end
 
@@ -116,27 +110,27 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
         {
           code: billable_metric_advance_metered.code,
           transaction_id: SecureRandom.uuid,
-          external_customer_id: customer.external_id,
-          properties: {total: '2'},
-        },
+          external_subscription_id: customer.external_id,
+          properties: {total: '2'}
+        }
       )
 
       create_event(
         {
           code: billable_metric_metered.code,
           transaction_id: SecureRandom.uuid,
-          external_customer_id: customer.external_id,
-          properties: {total: '1'},
-        },
+          external_subscription_id: customer.external_id,
+          properties: {total: '1'}
+        }
       )
 
       create_event(
         {
           code: billable_metric_advance_metered.code,
           transaction_id: SecureRandom.uuid,
-          external_customer_id: customer.external_id,
-          properties: {total: '30'},
-        },
+          external_subscription_id: customer.external_id,
+          properties: {total: '30'}
+        }
       )
     end
   end
@@ -150,7 +144,7 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
           Subscriptions::BillingService.new.call
           perform_all_enqueued_jobs
 
-          expect(invoice.fees.commitment_kind.count).to eq(0)
+          expect(invoice.fees.commitment.count).to eq(0)
         end
       end
     end
@@ -164,9 +158,9 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
                 {
                   code: billable_metric_advance_metered.code,
                   transaction_id: SecureRandom.uuid,
-                  external_customer_id: customer.external_id,
-                  properties: {total: '55'},
-                },
+                  external_subscription_id: customer.external_id,
+                  properties: {total: '55'}
+                }
               )
             end
 
@@ -175,9 +169,9 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
                 {
                   code: billable_metric_metered.code,
                   transaction_id: SecureRandom.uuid,
-                  external_customer_id: customer.external_id,
-                  properties: {total: '1'},
-                },
+                  external_subscription_id: customer.external_id,
+                  properties: {total: '1'}
+                }
               )
             end
 
@@ -190,8 +184,8 @@ describe 'Billing Minimum Commitments In Arrears Scenario', :scenarios, type: :r
       it 'creates an invoice with minimum commitment fee' do
         travel_to(subscription_time + 1.year + 1.month) do
           aggregate_failures do
-            expect(invoice.fees.commitment_kind.count).to eq(1)
-            expect(invoice.fees.commitment_kind.sum(:amount_cents)).to eq(981_100)
+            expect(invoice.fees.commitment.count).to eq(1)
+            expect(invoice.fees.commitment.sum(:amount_cents)).to eq(981_100)
           end
         end
       end

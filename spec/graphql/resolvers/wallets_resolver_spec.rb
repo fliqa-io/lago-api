@@ -33,8 +33,8 @@ RSpec.describe Resolvers::WalletsResolver, type: :graphql do
       current_organization: organization,
       query:,
       variables: {
-        customerId: customer.id,
-      },
+        customerId: customer.id
+      }
     )
 
     wallets_response = result['data']['wallets']
@@ -54,13 +54,13 @@ RSpec.describe Resolvers::WalletsResolver, type: :graphql do
         current_user: membership.user,
         query:,
         variables: {
-          customerId: customer.id,
-        },
+          customerId: customer.id
+        }
       )
 
       expect_graphql_error(
         result:,
-        message: 'Missing organization id',
+        message: 'Missing organization id'
       )
     end
   end
@@ -72,13 +72,13 @@ RSpec.describe Resolvers::WalletsResolver, type: :graphql do
         current_organization: create(:organization),
         query:,
         variables: {
-          customerId: customer.id,
-        },
+          customerId: customer.id
+        }
       )
 
       expect_graphql_error(
         result:,
-        message: 'Not in organization',
+        message: 'Not in organization'
       )
     end
   end
@@ -90,13 +90,13 @@ RSpec.describe Resolvers::WalletsResolver, type: :graphql do
         current_organization: organization,
         query:,
         variables: {
-          customerId: '123456',
-        },
+          customerId: '123456'
+        }
       )
 
       expect_graphql_error(
         result:,
-        message: 'Resource not found',
+        message: 'Resource not found'
       )
     end
   end

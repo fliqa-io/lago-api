@@ -45,9 +45,9 @@ RSpec.describe Mutations::AddOns::Update, type: :graphql do
           description: 'desc',
           amountCents: 123,
           amountCurrency: 'USD',
-          taxCodes: [tax2.code],
-        },
-      },
+          taxCodes: [tax2.code]
+        }
+      }
     )
 
     result_data = result['data']['updateAddOn']

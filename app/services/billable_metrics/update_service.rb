@@ -22,16 +22,10 @@ module BillableMetrics
       billable_metric.description = params[:description] if params.key?(:description)
 
       ActiveRecord::Base.transaction do
-        if params.key?(:group)
-          group_result = update_groups(billable_metric, params[:group])
-          return group_result if group_result.error
-        end
-
         if params.key?(:filters)
           BillableMetricFilters::CreateOrUpdateBatchService.call(
             billable_metric:,
-            filters_params: params[:filters].map { |f| f.to_h.with_indifferent_access },
-            legacy_group_params: params[:group],
+            filters_params: params[:filters].map { |f| f.to_h.with_indifferent_access }
           ).raise_if_error!
         end
       end
@@ -44,7 +38,14 @@ module BillableMetrics
         billable_metric.weighted_interval = params[:weighted_interval]&.to_sym if params.key?(:weighted_interval)
         billable_metric.field_name = params[:field_name] if params.key?(:field_name)
         billable_metric.recurring = params[:recurring] if params.key?(:recurring)
+        billable_metric.rounding_function = params[:rounding_function] if params.key?(:rounding_function)
+        billable_metric.rounding_precision = params[:rounding_precision] if params.key?(:rounding_precision)
         billable_metric.weighted_interval = params[:weighted_interval]&.to_sym if params.key?(:weighted_interval)
+        billable_metric.expression = params[:expression] if params.key?(:expression)
+
+        if params.key?(:expression) || params.key?(:field_name)
+          BillableMetrics::ExpressionCacheService.expire_cache(organization.id, billable_metric.code)
+        end
       end
 
       billable_metric.save!
@@ -53,6 +54,8 @@ module BillableMetrics
       result
     rescue ActiveRecord::RecordInvalid => e
       result.record_validation_failure!(record: e.record)
+    rescue BaseService::FailedResult => e
+      e.result
     end
 
     private
@@ -60,12 +63,5 @@ module BillableMetrics
     attr_reader :billable_metric, :params
 
     delegate :organization, to: :billable_metric
-
-    def update_groups(metric, group_params)
-      Groups::CreateOrUpdateBatchService.call(
-        billable_metric: metric,
-        group_params: group_params.with_indifferent_access,
-      )
-    end
   end
 end

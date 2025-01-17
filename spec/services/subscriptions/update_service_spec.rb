@@ -16,7 +16,7 @@ RSpec.describe Subscriptions::UpdateService, type: :service do
       {
         name: 'new name',
         ending_at:,
-        subscription_at:,
+        subscription_at:
       }
     end
 
@@ -34,10 +34,26 @@ RSpec.describe Subscriptions::UpdateService, type: :service do
       end
     end
 
+    context 'when subscription should sync Hubspot subscription' do
+      let(:params) { {name: 'new name'} }
+
+      before do
+        allow(subscription).to receive(:should_sync_hubspot_subscription?).and_return(true)
+        allow(Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob).to receive(:perform_later)
+      end
+
+      it 'enqueues a job to update Hubspot subscription' do
+        update_service.call
+
+        expect(Integrations::Aggregator::Subscriptions::Hubspot::UpdateJob)
+          .to have_received(:perform_later).with(subscription: subscription)
+      end
+    end
+
     context 'when subscription_at is not passed at all' do
       let(:params) do
         {
-          name: 'new name',
+          name: 'new name'
         }
       end
 
@@ -94,7 +110,7 @@ RSpec.describe Subscriptions::UpdateService, type: :service do
     context 'when subscription is nil' do
       let(:params) do
         {
-          name: 'new name',
+          name: 'new name'
         }
       end
 
@@ -114,8 +130,8 @@ RSpec.describe Subscriptions::UpdateService, type: :service do
       let(:params) do
         {
           plan_overrides: {
-            name: 'new name',
-          },
+            name: 'new name'
+          }
         }
       end
 
@@ -146,8 +162,8 @@ RSpec.describe Subscriptions::UpdateService, type: :service do
         {
           name: 'new name',
           plan_overrides: {
-            amount_cents: 0,
-          },
+            amount_cents: 0
+          }
         }
       end
 

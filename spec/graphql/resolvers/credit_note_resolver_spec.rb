@@ -63,8 +63,8 @@ RSpec.describe Resolvers::CreditNoteResolver, type: :graphql do
       permissions: required_permission,
       query:,
       variables: {
-        creditNoteId: credit_note.id,
-      },
+        creditNoteId: credit_note.id
+      }
     )
 
     credit_note_response = result['data']['creditNote']

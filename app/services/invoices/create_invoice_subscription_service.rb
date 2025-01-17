@@ -17,7 +17,7 @@ module Invoices
       if duplicated_invoices?
         return result.service_failure!(
           code: 'duplicated_invoices',
-          message: 'Invoice subscription already exists with the boundaries',
+          message: 'Invoice subscription already exists with the boundaries'
         )
       end
 
@@ -36,7 +36,7 @@ module Invoices
           charges_from_datetime: boundaries[:charges_from_datetime],
           charges_to_datetime: boundaries[:charges_to_datetime],
           recurring: invoicing_reason.to_sym == :subscription_periodic,
-          invoicing_reason: invoicing_reason_for_subscription(subscription),
+          invoicing_reason: invoicing_reason_for_subscription(subscription)
         )
       end
 
@@ -83,16 +83,15 @@ module Invoices
         to_datetime: date_service.to_datetime,
         charges_from_datetime: date_service.charges_from_datetime,
         charges_to_datetime: date_service.charges_to_datetime,
-        timestamp: datetime,
+        timestamp: datetime
       }
     end
 
     def date_service(subscription)
-      Subscriptions::DatesService.new_instance(
-        subscription,
-        datetime,
-        current_usage: subscription.terminated? && subscription.upgraded?,
-      )
+      current_usage = invoicing_reason.to_sym == :progressive_billing
+      current_usage ||= subscription.terminated_at?(datetime) && subscription.upgraded?
+
+      Subscriptions::DatesService.new_instance(subscription, datetime, current_usage:)
     end
 
     # This method calculates boundaries for terminated subscription. If termination is happening on billing date
@@ -124,17 +123,17 @@ module Invoices
         charges_from_datetime: dates_service.charges_from_datetime,
         charges_to_datetime: dates_service.charges_to_datetime,
         timestamp: datetime,
-        charges_duration: dates_service.charges_duration_in_days,
+        charges_duration: dates_service.charges_duration_in_days
       }
 
       InvoiceSubscription.matching?(subscription, previous_period_boundaries) ? boundaries : previous_period_boundaries
     end
 
     def invoicing_reason_for_subscription(subscription)
-      # NOTE: upgrading is used as a not persisted reasong as it means
+      # NOTE: upgrading is used as a not persisted reason as it means
       #       one subscription starting and a second one terminating
       return invoicing_reason if invoicing_reason.to_sym != :upgrading
-      return :subscription_terminating if subscription.terminated?
+      return :subscription_terminating if subscription.terminated_at?(timestamp)
 
       :subscription_starting
     end

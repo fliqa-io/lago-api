@@ -203,11 +203,11 @@ module Events
           # NOTE: Common table expression returning event's timestamp, property name and operation type.
           <<-SQL
             WITH events_data AS (#{
-              events
+              events(ordered: true)
                 .select(
                   "timestamp, \
                   #{sanitized_property_name} AS property, \
-                  COALESCE(events.properties->>'operation_type', 'add') AS operation_type",
+                  COALESCE(events.properties->>'operation_type', 'add') AS operation_type"
                 ).to_sql
             })
           SQL
@@ -220,12 +220,12 @@ module Events
 
           <<-SQL
             WITH events_data AS (#{
-              events
+              events(ordered: true)
                 .select(
                   "#{groups.join(", ")}, \
                   timestamp, \
                   #{sanitized_property_name} AS property, \
-                  COALESCE(events.properties->>'operation_type', 'add') AS operation_type",
+                  COALESCE(events.properties->>'operation_type', 'add') AS operation_type"
                 ).to_sql
             })
           SQL
@@ -293,7 +293,7 @@ module Events
               )
               /
               -- NOTE: full duration of the period
-              #{charges_duration}::numeric
+              #{charges_duration || 1}::numeric
             ELSE
               0 -- NOTE: duration was null so usage is null
             END
@@ -323,7 +323,7 @@ module Events
               )
               /
               -- NOTE: full duration of the period
-              #{charges_duration}::numeric
+              #{charges_duration || 1}::numeric
             ELSE
               0 -- NOTE: duration was null so usage is null
             END
@@ -331,7 +331,7 @@ module Events
         end
 
         def group_names
-          @group_names ||= store.grouped_by.map.with_index { |_, index| "g_#{index}" }.join(', ')
+          @group_names ||= store.grouped_by.map.with_index { |_, index| "g_#{index}" }.join(", ")
         end
       end
     end

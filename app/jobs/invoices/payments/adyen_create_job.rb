@@ -5,11 +5,14 @@ module Invoices
     class AdyenCreateJob < ApplicationJob
       queue_as 'providers'
 
-      unique :until_executed
+      unique :until_executed, on_conflict: :log
+
+      retry_on Faraday::ConnectionFailed, wait: :polynomially_longer, attempts: 6
 
       def perform(invoice)
-        result = Invoices::Payments::AdyenService.new(invoice).create
-        result.raise_if_error!
+        # NOTE: Legacy job, kept only to avoid failure with existing jobs
+
+        Invoices::Payments::CreateService.call!(invoice:, payment_provider: :adyen)
       end
     end
   end

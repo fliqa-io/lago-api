@@ -28,12 +28,14 @@ RSpec.describe Types::Invoices::Object do
   it { is_expected.to have_field(:credit_notes_amount_cents).of_type('BigInt!') }
   it { is_expected.to have_field(:fees_amount_cents).of_type('BigInt!') }
   it { is_expected.to have_field(:prepaid_credit_amount_cents).of_type('BigInt!') }
+  it { is_expected.to have_field(:progressive_billing_credit_amount_cents).of_type('BigInt!') }
   it { is_expected.to have_field(:sub_total_excluding_taxes_amount_cents).of_type('BigInt!') }
   it { is_expected.to have_field(:sub_total_including_taxes_amount_cents).of_type('BigInt!') }
   it { is_expected.to have_field(:taxes_amount_cents).of_type('BigInt!') }
   it { is_expected.to have_field(:total_amount_cents).of_type('BigInt!') }
   it { is_expected.to have_field(:issuing_date).of_type('ISO8601Date!') }
   it { is_expected.to have_field(:payment_due_date).of_type('ISO8601Date!') }
+  it { is_expected.to have_field(:payment_overdue).of_type('Boolean!') }
 
   it { is_expected.to have_field(:created_at).of_type('ISO8601DateTime!') }
   it { is_expected.to have_field(:updated_at).of_type('ISO8601DateTime!') }
@@ -49,4 +51,11 @@ RSpec.describe Types::Invoices::Object do
   it { is_expected.to have_field(:fees).of_type('[Fee!]') }
   it { is_expected.to have_field(:invoice_subscriptions).of_type('[InvoiceSubscription!]') }
   it { is_expected.to have_field(:subscriptions).of_type('[Subscription!]') }
+
+  it { is_expected.to have_field(:external_hubspot_integration_id).of_type('String') }
+  it { is_expected.to have_field(:external_salesforce_integration_id).of_type('String') }
+  it { is_expected.to have_field(:external_integration_id).of_type('String') }
+  it { is_expected.to have_field(:integration_hubspot_syncable).of_type('Boolean!') }
+  it { is_expected.to have_field(:integration_salesforce_syncable).of_type('Boolean!') }
+  it { is_expected.to have_field(:integration_syncable).of_type('Boolean!') }
 end

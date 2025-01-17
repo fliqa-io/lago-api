@@ -23,5 +23,38 @@ FactoryBot.define do
     trait :dispute_lost do
       payment_dispute_lost_at { DateTime.current - 1.day }
     end
+
+    trait :with_tax_error do
+      after :create do |i|
+        create(:error_detail, owner: i, error_code: 'tax_error')
+      end
+    end
+
+    trait :with_tax_voiding_error do
+      after :create do |i|
+        create(:error_detail, owner: i, error_code: 'tax_voiding_error')
+      end
+    end
+
+    trait :failed do
+      status { :failed }
+    end
+
+    trait :pending do
+      status { :pending }
+    end
+
+    trait :subscription do
+      transient do
+        subscriptions { [create(:subscription)] }
+      end
+
+      invoice_type { :subscription }
+      after :create do |invoice, evaluator|
+        evaluator.subscriptions.each do |subscription|
+          create(:invoice_subscription, invoice:, subscription:)
+        end
+      end
+    end
   end
 end

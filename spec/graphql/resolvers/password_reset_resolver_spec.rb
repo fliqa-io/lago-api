@@ -23,8 +23,8 @@ RSpec.describe Resolvers::PasswordResetResolver, type: :graphql do
     result = execute_graphql(
       query:,
       variables: {
-        token: password_reset.token,
-      },
+        token: password_reset.token
+      }
     )
 
     data = result['data']['passwordReset']
@@ -38,13 +38,13 @@ RSpec.describe Resolvers::PasswordResetResolver, type: :graphql do
       result = execute_graphql(
         query:,
         variables: {
-          token: 'foo',
-        },
+          token: 'foo'
+        }
       )
 
       expect_graphql_error(
         result:,
-        message: 'Resource not found',
+        message: 'Resource not found'
       )
     end
   end

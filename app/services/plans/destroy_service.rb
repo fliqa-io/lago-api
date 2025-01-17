@@ -20,7 +20,7 @@ module Plans
 
       # NOTE: Finalize all draft invoices.
       invoices = Invoice.draft.joins(:plans).where(plans: {id: plan.id}).distinct
-      invoices.find_each { |invoice| Invoices::FinalizeService.call(invoice:) }
+      invoices.find_each { |invoice| Invoices::RefreshDraftAndFinalizeService.call(invoice:) }
 
       plan.pending_deletion = false
       plan.discard!
@@ -53,8 +53,8 @@ module Plans
           nb_percentage_charges: count_by_charge_model['percentage'] || 0,
           nb_graduated_charges: count_by_charge_model['graduated'] || 0,
           nb_package_charges: count_by_charge_model['package'] || 0,
-          organization_id: plan.organization_id,
-        },
+          organization_id: plan.organization_id
+        }
       )
     end
   end

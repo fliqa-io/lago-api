@@ -8,7 +8,7 @@ RSpec.describe Events::CreateBatchService, type: :service do
       organization:,
       events_params:,
       timestamp: creation_timestamp,
-      metadata:,
+      metadata:
     )
   end
 
@@ -17,6 +17,7 @@ RSpec.describe Events::CreateBatchService, type: :service do
   let(:code) { 'sum_agg' }
   let(:metadata) { {} }
   let(:creation_timestamp) { Time.current.to_f }
+  let(:precise_total_amount_cents) { '123.34' }
 
   let(:events_params) do
     events = []
@@ -26,8 +27,9 @@ RSpec.describe Events::CreateBatchService, type: :service do
         external_subscription_id: SecureRandom.uuid,
         code:,
         transaction_id: SecureRandom.uuid,
+        precise_total_amount_cents:,
         properties: {foo: 'bar'},
-        timestamp:,
+        timestamp:
       }
 
       events << event
@@ -51,6 +53,25 @@ RSpec.describe Events::CreateBatchService, type: :service do
       expect { create_batch_service.call }.to have_enqueued_job(Events::PostProcessJob).exactly(100)
     end
 
+    context 'when no events are provided' do
+      before do
+        events_params[:events] = []
+      end
+
+      it 'returns a no_events error' do
+        result = nil
+
+        aggregate_failures do
+          expect { result = create_batch_service.call }.not_to change(Event, :count)
+
+          expect(result).not_to be_success
+          expect(result.error).to be_a(BaseService::ValidationFailure)
+          expect(result.error.messages.keys).to include(:events)
+          expect(result.error.messages[:events]).to include('no_events')
+        end
+      end
+    end
+
     context 'when events count is too big' do
       before do
         events_params[:events].push(
@@ -60,8 +81,8 @@ RSpec.describe Events::CreateBatchService, type: :service do
             code:,
             transaction_id: SecureRandom.uuid,
             properties: {foo: 'bar'},
-            timestamp:,
-          },
+            timestamp:
+          }
         )
       end
 
@@ -86,7 +107,7 @@ RSpec.describe Events::CreateBatchService, type: :service do
             :event,
             organization:,
             transaction_id: '123456',
-            external_subscription_id: '123456',
+            external_subscription_id: '123456'
           )
         end
 
@@ -99,9 +120,9 @@ RSpec.describe Events::CreateBatchService, type: :service do
                 code:,
                 transaction_id: '123456',
                 properties: {foo: 'bar'},
-                timestamp:,
-              },
-            ],
+                timestamp:
+              }
+            ]
           }
         end
 
@@ -134,9 +155,9 @@ RSpec.describe Events::CreateBatchService, type: :service do
               code:,
               transaction_id: SecureRandom.uuid,
               properties: {foo: 'bar'},
-              timestamp:,
-            },
-          ],
+              timestamp:
+            }
+          ]
         }
       end
 
@@ -159,10 +180,11 @@ RSpec.describe Events::CreateBatchService, type: :service do
               external_subscription_id: SecureRandom.uuid,
               code:,
               transaction_id: SecureRandom.uuid,
+              precise_total_amount_cents:,
               properties: {foo: 'bar'},
-              timestamp:,
-            },
-          ],
+              timestamp:
+            }
+          ]
         }
       end
 
@@ -171,6 +193,50 @@ RSpec.describe Events::CreateBatchService, type: :service do
 
         expect(result).to be_success
         expect(result.events.first.timestamp).to eq(Time.zone.at(timestamp.to_f))
+      end
+    end
+
+    context 'when timestamp is in a wrong format' do
+      let(:timestamp) { Time.current.to_s }
+      let(:events_params) do
+        {
+          events: [
+            {
+              external_customer_id: SecureRandom.uuid,
+              external_subscription_id: SecureRandom.uuid,
+              code:,
+              transaction_id: SecureRandom.uuid,
+              precise_total_amount_cents:,
+              properties: {foo: 'bar'},
+              timestamp:
+            }
+          ]
+        }
+      end
+
+      it 'returns an error' do
+        result = nil
+        expect { result = create_batch_service.call }.not_to change(Event, :count)
+
+        expect(result).not_to be_success
+        expect(result.error).to be_a(BaseService::ValidationFailure)
+        expect(result.error.messages.keys).to include(0)
+        expect(result.error.messages[0][:timestamp]).to include('invalid_format')
+      end
+    end
+
+    context "with an expression configured on the billable metric" do
+      let(:billable_metric) { create(:billable_metric, code:, organization:, field_name: "result", expression: "concat(event.properties.foo, '-bar')") }
+
+      before do
+        billable_metric
+      end
+
+      it "creates an event and updates the field name with the result of the expression" do
+        result = create_batch_service.call
+
+        expect(result).to be_success
+        result.events.each { |event| expect(event.properties["result"]).to eq('bar-bar') }
       end
     end
 
@@ -185,10 +251,11 @@ RSpec.describe Events::CreateBatchService, type: :service do
               external_subscription_id: SecureRandom.uuid,
               code:,
               transaction_id: SecureRandom.uuid,
+              precise_total_amount_cents:,
               properties: {foo: 'bar'},
-              timestamp:,
-            },
-          ],
+              timestamp:
+            }
+          ]
         }
       end
 

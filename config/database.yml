@@ -9,6 +9,7 @@ development:
     password: changeme
     database: lago
     port: 5432
+    schema_search_path: 'public'
   events:
     <<: *default
     host: db
@@ -25,7 +26,7 @@ development:
     password: default
     migrations_paths: db/clickhouse_migrate
     debug: true
-    database_tasks: <% if ENV['LAGO_CLICKHOUSE_ENABLED'].present? %> true <% else %> false <% end %>
+    database_tasks: <% if ENV['LAGO_CLICKHOUSE_MIGRATIONS_ENABLED'].present? %> true <% else %> false <% end %>
 
 test:
   primary:
@@ -45,16 +46,18 @@ test:
     password: <%= ENV.fetch('LAGO_CLICKHOUSE_PASSWORD', 'default') %>
     migrations_paths: db/clickhouse_migrate
     debug: true
-    database_tasks: <% if ENV['LAGO_CLICKHOUSE_ENABLED'].present? %> true <% else %> false <% end %>
+    database_tasks: <% if ENV['LAGO_CLICKHOUSE_MIGRATIONS_ENABLED'].present? %> true <% else %> false <% end %>
     schema_dump: <% if ENV['LAGO_DISABLE_SCHEMA_DUMP'].present? %> false <% else %> clickhouse_schema.rb <% end %>
 
 staging:
   primary:
     <<: *default
     url: <%= ENV['DATABASE_URL'] %>
+    pool: <%= ENV.fetch('DATABASE_POOL', 10) %>
   events:
     <<: *default
     url: <%= ENV['DATABASE_URL'] %>
+    pool: <%= ENV.fetch('DATABASE_POOL', 10) %>
     database_tasks: false
   clickhouse:
     adapter: clickhouse
@@ -65,7 +68,7 @@ staging:
     password: <%= ENV['LAGO_CLICKHOUSE_PASSWORD'] %>
     migrations_paths: db/clickhouse_migrate
     debug: false
-    database_tasks: <% if ENV['LAGO_CLICKHOUSE_ENABLED'].present? %> true <% else %> false <% end %>
+    database_tasks: <% if ENV['LAGO_CLICKHOUSE_MIGRATIONS_ENABLED'].present? %> true <% else %> false <% end %>
 
 production:
   primary:
@@ -73,19 +76,23 @@ production:
     url: <%= ENV['DATABASE_URL'] %>
     pool: <%= ENV.fetch('DATABASE_POOL', 10) %>
     prepared_statements: <%= ENV.fetch('DATABASE_PREPARED_STATEMENTS', true) %>
+    schema_search_path: <%= ENV.fetch('POSTGRES_SCHEMA', 'public') %>
   events:
     <<: *default
     url: <%= ENV['DATABASE_URL'] %>
     pool: <%= ENV.fetch('DATABASE_POOL', 10) %>
     prepared_statements: <%= ENV.fetch('DATABASE_PREPARED_STATEMENTS', true) %>
+    schema_search_path: <%= ENV.fetch('POSTGRES_SCHEMA', 'public') %>
     database_tasks: false
   clickhouse:
     adapter: clickhouse
     database: <%= ENV['LAGO_CLICKHOUSE_DATABASE'] %>
     host: <%= ENV['LAGO_CLICKHOUSE_HOST'] %>
     port: <%= ENV.fetch('LAGO_CLICKHOUSE_PORT', 8123) %>
+    pool: <%= ENV.fetch('DATABASE_POOL', 10) %>
     username: <%= ENV['LAGO_CLICKHOUSE_USERNAME'] %>
     password: <%= ENV['LAGO_CLICKHOUSE_PASSWORD'] %>
+    ssl: <%= ENV.fetch('LAGO_CLICKHOUSE_SSL', false) %>
     migrations_paths: db/clickhouse_migrate
     debug: false
-    database_tasks: <% if ENV['LAGO_CLICKHOUSE_ENABLED'].present? %> true <% else %> false <% end %>
+    database_tasks: <% if ENV['LAGO_CLICKHOUSE_MIGRATIONS_ENABLED'].present? %> true <% else %> false <% end %>

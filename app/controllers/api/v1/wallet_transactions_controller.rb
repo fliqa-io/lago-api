@@ -6,7 +6,7 @@ module Api
       def create
         result = WalletTransactions::CreateService.call(
           organization: current_organization,
-          params: input_params,
+          params: input_params
         )
 
         if result.success?
@@ -14,8 +14,8 @@ module Api
             json: ::CollectionSerializer.new(
               result.wallet_transactions,
               ::V1::WalletTransactionSerializer,
-              collection_name: 'wallet_transactions',
-            ),
+              collection_name: 'wallet_transactions'
+            )
           )
         else
           render_error_response(result)
@@ -23,15 +23,17 @@ module Api
       end
 
       def index
-        query = WalletTransactionsQuery.new(organization: current_organization)
-        result = query.call(
+        result = WalletTransactionsQuery.call(
+          organization: current_organization,
           wallet_id: params[:id],
-          page: params[:page],
-          limit: params[:per_page] || PER_PAGE,
+          pagination: {
+            page: params[:page],
+            limit: params[:per_page] || PER_PAGE
+          },
           filters: {
             status: params[:status],
-            transaction_type: params[:transaction_type],
-          },
+            transaction_type: params[:transaction_type]
+          }
         )
 
         return render_error_response(result) unless result.success?
@@ -41,8 +43,8 @@ module Api
             result.wallet_transactions,
             ::V1::WalletTransactionSerializer,
             collection_name: 'wallet_transactions',
-            meta: pagination_metadata(result.wallet_transactions),
-          ),
+            meta: pagination_metadata(result.wallet_transactions)
+          )
         )
       end
 
@@ -54,7 +56,16 @@ module Api
           :paid_credits,
           :granted_credits,
           :voided_credits,
+          :invoice_requires_successful_payment,
+          metadata: [
+            :key,
+            :value
+          ]
         )
+      end
+
+      def resource_name
+        'wallet_transaction'
       end
     end
   end

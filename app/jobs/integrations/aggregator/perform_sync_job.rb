@@ -5,17 +5,17 @@ module Integrations
     class PerformSyncJob < ApplicationJob
       queue_as 'integrations'
 
-      retry_on LagoHttpClient::HttpError, wait: :exponentially_longer, attempts: 3
+      retry_on LagoHttpClient::HttpError, wait: :polynomially_longer, attempts: 3
+      retry_on RequestLimitError, wait: :polynomially_longer, attempts: 100
 
-      def perform(integration:)
+      def perform(integration:, sync_items: true)
         sync_result = Integrations::Aggregator::SyncService.call(integration:)
         sync_result.raise_if_error!
 
-        items_result = Integrations::Aggregator::ItemsService.call(integration:)
-        items_result.raise_if_error!
-
-        tax_items_result = Integrations::Aggregator::TaxItemsService.call(integration:)
-        tax_items_result.raise_if_error!
+        if sync_items
+          items_result = Integrations::Aggregator::ItemsService.call(integration:)
+          items_result.raise_if_error!
+        end
       end
     end
   end

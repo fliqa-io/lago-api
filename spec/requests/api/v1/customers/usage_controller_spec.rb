@@ -13,14 +13,23 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
       :subscription,
       plan:,
       customer:,
-      started_at: Time.zone.now - 2.years,
+      started_at: Time.zone.now - 2.years
     )
   end
 
   describe 'GET /customers/:customer_id/current_usage' do
-    let(:tax) { create(:tax, organization:, rate: 20) }
+    subject do
+      get_with_token(
+        organization,
+        "/api/v1/customers/#{customer.external_id}/current_usage",
+        params
+      )
+    end
 
+    let(:params) { {external_subscription_id: subscription.external_id} }
+    let(:tax) { create(:tax, organization:, rate: 20) }
     let(:metric) { create(:billable_metric, aggregation_type: 'count_agg') }
+
     let(:charge) do
       create(
         :graduated_charge,
@@ -33,19 +42,11 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
               from_value: 0,
               to_value: nil,
               per_unit_amount: '0.01',
-              flat_amount: '0.01',
-            },
-          ],
-        },
+              flat_amount: '0.01'
+            }
+          ]
+        }
       )
-    end
-
-    let(:path) do
-      [
-        '/api/v1/customers',
-        customer.external_id,
-        "current_usage?external_subscription_id=#{subscription.external_id}",
-      ].join('/')
     end
 
     before do
@@ -60,25 +61,24 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
         customer:,
         subscription:,
         code: metric.code,
-        timestamp: Time.zone.now,
+        timestamp: Time.zone.now
       )
     end
 
+    include_examples 'requires API permission', 'customer_usage', 'read'
+
     it 'returns the usage for the customer' do
-      get_with_token(organization, path)
+      subject
 
       aggregate_failures do
         expect(response).to have_http_status(:success)
 
-        expect(json[:customer_usage][:from_date]).to eq(Time.zone.today.beginning_of_month.iso8601)
-        expect(json[:customer_usage][:to_date]).to eq(Time.zone.today.end_of_month.iso8601)
+        expect(json[:customer_usage][:from_datetime]).to eq(Time.zone.today.beginning_of_month.beginning_of_day.iso8601)
+        expect(json[:customer_usage][:to_datetime]).to eq(Time.zone.today.end_of_month.end_of_day.iso8601)
         expect(json[:customer_usage][:issuing_date]).to eq(Time.zone.today.end_of_month.iso8601)
         expect(json[:customer_usage][:amount_cents]).to eq(5)
-        expect(json[:customer_usage][:amount_currency]).to eq('EUR')
+        expect(json[:customer_usage][:currency]).to eq('EUR')
         expect(json[:customer_usage][:total_amount_cents]).to eq(6)
-        expect(json[:customer_usage][:total_amount_currency]).to eq('EUR')
-        expect(json[:customer_usage][:vat_amount_cents]).to eq(1)
-        expect(json[:customer_usage][:vat_amount_currency]).to eq('EUR')
 
         charge_usage = json[:customer_usage][:charges_usage].first
         expect(charge_usage[:billable_metric][:name]).to eq(metric.name)
@@ -88,7 +88,6 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
         expect(charge_usage[:units]).to eq('4.0')
         expect(charge_usage[:amount_cents]).to eq(5)
         expect(charge_usage[:amount_currency]).to eq('EUR')
-        expect(charge_usage[:groups]).to eq([])
       end
     end
 
@@ -102,7 +101,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           :standard_charge,
           plan: subscription.plan,
           billable_metric: metric,
-          properties: {amount: '0'},
+          properties: {amount: '0'}
         )
       end
 
@@ -129,7 +128,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           subscription:,
           code: metric.code,
           timestamp: Time.zone.now,
-          properties: {cloud: 'aws'},
+          properties: {cloud: 'aws'}
         )
 
         create(
@@ -139,36 +138,41 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           subscription:,
           code: metric.code,
           timestamp: Time.zone.now,
-          properties: {cloud: 'google'},
+          properties: {cloud: 'google'}
         )
       end
 
-      it 'returns the group usage for the customer' do
-        get_with_token(organization, path)
+      it 'returns the filters usage for the customer' do
+        subject
 
         charge_usage = json[:customer_usage][:charges_usage].first
-        groups_usage = charge_usage[:groups]
+        filters_usage = charge_usage[:filters]
 
         aggregate_failures do
           expect(charge_usage[:units]).to eq('8.0')
           expect(charge_usage[:amount_cents]).to eq(5000)
-          expect(groups_usage).to contain_exactly(
+          expect(filters_usage).to contain_exactly(
             {
-              lago_id: "charge-filter-#{charge_filter_aws.id}",
-              key: 'cloud',
-              value: 'aws',
+              amount_cents: 0,
+              events_count: 4,
+              invoice_display_name: nil,
+              units: "4.0",
+              values: nil
+            },
+            {
               units: '3.0',
               amount_cents: 3000,
               events_count: 3,
+              invoice_display_name: nil,
+              values: {cloud: ['aws']}
             },
             {
-              lago_id: "charge-filter-#{charge_filter_gcp.id}",
-              key: 'cloud',
-              value: 'google',
               units: '1.0',
               amount_cents: 2000,
               events_count: 1,
-            },
+              invoice_display_name: nil,
+              values: {cloud: ['google']}
+            }
           )
         end
       end
@@ -191,7 +195,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           :charge_filter_value,
           charge_filter: charge_filter_aws_usa,
           billable_metric_filter: billable_metric_filter_cloud,
-          values: ['aws'],
+          values: ['aws']
         )
       end
       let(:charge_filter_value12) do
@@ -199,7 +203,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           :charge_filter_value,
           charge_filter: charge_filter_aws_usa,
           billable_metric_filter: billable_metric_filter_region,
-          values: ['usa'],
+          values: ['usa']
         )
       end
 
@@ -208,7 +212,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           :charge_filter_value,
           charge_filter: charge_filter_aws_france,
           billable_metric_filter: billable_metric_filter_cloud,
-          values: ['aws'],
+          values: ['aws']
         )
       end
       let(:charge_filter_value22) do
@@ -216,7 +220,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           :charge_filter_value,
           charge_filter: charge_filter_aws_france,
           billable_metric_filter: billable_metric_filter_region,
-          values: ['france'],
+          values: ['france']
         )
       end
 
@@ -225,7 +229,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           :charge_filter_value,
           charge_filter: charge_filter_google_usa,
           billable_metric_filter: billable_metric_filter_cloud,
-          values: ['google'],
+          values: ['google']
         )
       end
       let(:charge_filter_value32) do
@@ -233,7 +237,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           :charge_filter_value,
           charge_filter: charge_filter_google_usa,
           billable_metric_filter: billable_metric_filter_region,
-          values: ['usa'],
+          values: ['usa']
         )
       end
 
@@ -242,7 +246,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           :standard_charge,
           plan: subscription.plan,
           billable_metric: metric,
-          properties: {amount: '0'},
+          properties: {amount: '0'}
         )
       end
 
@@ -262,7 +266,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           subscription:,
           code: metric.code,
           timestamp: Time.zone.now,
-          properties: {cloud: 'aws', region: 'usa'},
+          properties: {cloud: 'aws', region: 'usa'}
         )
 
         create(
@@ -272,7 +276,7 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           subscription:,
           code: metric.code,
           timestamp: Time.zone.now,
-          properties: {cloud: 'aws', region: 'france'},
+          properties: {cloud: 'aws', region: 'france'}
         )
 
         create(
@@ -282,44 +286,48 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
           subscription:,
           code: metric.code,
           timestamp: Time.zone.now,
-          properties: {cloud: 'google', region: 'usa'},
+          properties: {cloud: 'google', region: 'usa'}
         )
       end
 
-      it 'returns the group usage for the customer' do
-        get_with_token(organization, path)
+      it 'returns the filters usage for the customer' do
+        subject
 
         charge_usage = json[:customer_usage][:charges_usage].first
-        groups_usage = charge_usage[:groups]
+        filters_usage = charge_usage[:filters]
 
         aggregate_failures do
           expect(charge_usage[:units]).to eq('8.0')
           expect(charge_usage[:amount_cents]).to eq(7000)
-          expect(groups_usage).to contain_exactly(
+          expect(filters_usage).to contain_exactly(
             {
-              lago_id: "charge-filter-#{charge_filter_aws_usa.id}",
-              key: 'cloud, region',
-              value: 'aws, usa',
+              units: '4.0',
+              amount_cents: 0,
+              events_count: 4,
+              invoice_display_name: nil,
+              values: nil
+            },
+            {
               units: '2.0',
               amount_cents: 2000,
               events_count: 2,
+              invoice_display_name: nil,
+              values: {cloud: ['aws'], region: ['usa']}
             },
             {
-              lago_id: "charge-filter-#{charge_filter_aws_france.id}",
-              key: 'cloud, region',
-              value: 'aws, france',
               units: '1.0',
               amount_cents: 2000,
               events_count: 1,
+              invoice_display_name: nil,
+              values: {cloud: ['aws'], region: ['france']}
             },
             {
-              lago_id: "charge-filter-#{charge_filter_google_usa.id}",
-              key: 'cloud, region',
-              value: 'google, usa',
               units: '1.0',
               amount_cents: 3000,
               events_count: 1,
-            },
+              invoice_display_name: nil,
+              values: {cloud: ['google'], region: ['usa']}
+            }
           )
         end
       end
@@ -329,20 +337,29 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
       let(:customer) { create(:customer) }
 
       it 'returns not found' do
-        get_with_token(organization, path)
-
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end
   end
 
   describe 'GET /customers/:customer_id/past_usage' do
+    subject do
+      get_with_token(
+        organization,
+        "/api/v1/customers/#{customer.external_id}/past_usage",
+        params
+      )
+    end
+
+    let(:params) { {external_subscription_id: subscription.external_id, periods_count: 2} }
+
     let(:invoice_subscription) do
       create(
         :invoice_subscription,
         charges_from_datetime: DateTime.parse('2023-08-17T00:00:00'),
         charges_to_datetime: DateTime.parse('2023-09-16T23:59:59'),
-        subscription:,
+        subscription:
       )
     end
 
@@ -354,24 +371,18 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
 
     let(:invoice) { invoice_subscription.invoice }
 
-    let(:fee1) { create(:charge_fee, charge: charge1, invoice:) }
-    let(:fee2) { create(:charge_fee, charge: charge2, invoice:) }
-
-    let(:path) do
-      [
-        '/api/v1/customers',
-        customer.external_id,
-        "past_usage?external_subscription_id=#{subscription.external_id}&periods_count=2",
-      ].join('/')
-    end
+    let(:fee1) { create(:charge_fee, charge: charge1, subscription:, invoice:) }
+    let(:fee2) { create(:charge_fee, charge: charge2, subscription:, invoice:) }
 
     before do
       fee1
       fee2
     end
 
+    include_examples 'requires API permission', 'customer_usage', 'read'
+
     it 'returns the past usage' do
-      get_with_token(organization, path)
+      subject
 
       aggregate_failures do
         expect(response).to have_http_status(:success)
@@ -397,38 +408,28 @@ RSpec.describe Api::V1::Customers::UsageController, type: :request do
         expect(charge_usage[:units]).to eq(fee1.units.to_s)
         expect(charge_usage[:amount_cents]).to eq(fee1.amount_cents)
         expect(charge_usage[:amount_currency]).to eq(fee1.currency)
-        expect(charge_usage[:groups]).to eq([])
       end
     end
 
     context 'when missing external_subscription_id' do
-      let(:path) do
-        [
-          '/api/v1/customers',
-          customer.external_id,
-          'past_usage',
-        ].join('/')
-      end
+      let(:params) { {} }
 
       it 'returns an unprocessable entity' do
-        get_with_token(organization, path)
-
+        subject
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
 
     context 'with invalid billable metric code' do
-      let(:path) do
-        [
-          '/api/v1/customers',
-          customer.external_id,
-          "past_usage?billable_metric_code=foo&external_subscription_id=#{subscription.external_id}",
-        ].join('/')
+      let(:params) do
+        {
+          billable_metric_code: 'invalid_code',
+          external_subscription_id: subscription.external_id
+        }
       end
 
       it 'returns a not found error' do
-        get_with_token(organization, path)
-
+        subject
         expect(response).to have_http_status(:not_found)
       end
     end

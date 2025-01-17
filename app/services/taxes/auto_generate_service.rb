@@ -23,11 +23,22 @@ module Taxes
     attr_reader :organization, :lago_eu_vat
 
     def create_country_tax(country_code)
-      country_rates = lago_eu_vat.country_rates(country_code:)
+      country_taxes = lago_eu_vat.country_rates(country_code:)
+
+      country_rates = country_taxes[:rates]
       tax_code = "lago_eu_#{country_code.downcase}_standard"
       tax_name = "Lago EU #{country_code.upcase} Standard"
-
       create_tax(tax_code, tax_name, country_rates['standard'])
+
+      country_exceptions = country_taxes[:exceptions]
+      return if country_exceptions.blank?
+
+      country_exceptions.each do |exception|
+        exception_code = exception['name'].parameterize.underscore
+        tax_code = "lago_eu_#{country_code.downcase}_exception_#{exception_code}"
+        tax_name = "Lago EU #{country_code.upcase} #{exception["name"]} Standard"
+        create_tax(tax_code, tax_name, exception['standard'])
+      end
     end
 
     def create_generic_taxes
@@ -37,7 +48,7 @@ module Taxes
 
     def create_tax(tax_code, tax_name, rate)
       tax = organization.taxes.find_or_initialize_by(
-        code: tax_code,
+        code: tax_code
       )
 
       tax.name = tax_name

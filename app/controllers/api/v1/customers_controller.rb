@@ -7,7 +7,7 @@ module Api
         service = ::Customers::CreateService.new
         result = service.create_from_api(
           organization: current_organization,
-          params: create_params.to_h.deep_symbolize_keys,
+          params: create_params.to_h.deep_symbolize_keys
         )
 
         if result.success?
@@ -26,9 +26,9 @@ module Api
           render(
             json: {
               customer: {
-                portal_url: result.url,
-              },
-            },
+                portal_url: result.url
+              }
+            }
           )
         else
           render_error_response(result)
@@ -36,19 +36,27 @@ module Api
       end
 
       def index
-        customers = current_organization.customers
-          .page(params[:page])
-          .per(params[:per_page] || PER_PAGE)
-
-        render(
-          json: ::CollectionSerializer.new(
-            customers,
-            ::V1::CustomerSerializer,
-            collection_name: 'customers',
-            meta: pagination_metadata(customers),
-            includes: %i[taxes],
-          ),
+        result = CustomersQuery.call(
+          organization: current_organization,
+          pagination: {
+            page: params[:page],
+            limit: params[:per_page] || PER_PAGE
+          }
         )
+
+        if result.success?
+          render(
+            json: ::CollectionSerializer.new(
+              result.customers.includes(:taxes, :integration_customers),
+              ::V1::CustomerSerializer,
+              collection_name: "customers",
+              meta: pagination_metadata(result.customers),
+              includes: %i[taxes integration_customers]
+            )
+          )
+        else
+          render_error_response(result)
+        end
       end
 
       def show
@@ -80,8 +88,8 @@ module Api
             json: ::V1::PaymentProviders::CustomerCheckoutSerializer.new(
               customer,
               root_name: 'customer',
-              checkout_url: result.checkout_url,
-            ),
+              checkout_url: result.checkout_url
+            )
           )
         else
           render_error_response(result)
@@ -94,6 +102,9 @@ module Api
         params.require(:customer).permit(
           :external_id,
           :name,
+          :firstname,
+          :lastname,
+          :customer_type,
           :country,
           :address_line1,
           :address_line2,
@@ -111,12 +122,16 @@ module Api
           :timezone,
           :net_payment_term,
           :external_salesforce_id,
-          integration_customer: [
+          :finalize_zero_amount_invoice,
+          :skip_invoice_custom_sections,
+          integration_customers: [
+            :id,
             :external_customer_id,
             :integration_type,
             :integration_code,
             :subsidiary_id,
             :sync_with_provider,
+            :targeted_object
           ],
           billing_configuration: [
             :invoice_grace_period,
@@ -126,18 +141,24 @@ module Api
             :sync,
             :sync_with_provider,
             :document_locale,
-
-            # NOTE(legacy): vat has been moved to tax model
-            :vat_rate,
-            provider_payment_methods: [],
+            provider_payment_methods: []
           ],
           metadata: [
             :id,
             :key,
             :value,
-            :display_in_invoice,
+            :display_in_invoice
+          ],
+          shipping_address: [
+            :address_line1,
+            :address_line2,
+            :city,
+            :zipcode,
+            :state,
+            :country
           ],
           tax_codes: [],
+          invoice_custom_section_codes: []
         )
       end
 
@@ -146,9 +167,13 @@ module Api
           json: ::V1::CustomerSerializer.new(
             customer,
             root_name: 'customer',
-            includes: %i[taxes],
-          ),
+            includes: %i[taxes integration_customers applicable_invoice_custom_sections]
+          )
         )
+      end
+
+      def resource_name
+        'customer'
       end
     end
   end

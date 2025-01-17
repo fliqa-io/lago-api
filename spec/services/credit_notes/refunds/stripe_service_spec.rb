@@ -18,7 +18,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
       payment_provider_customer: stripe_customer,
       amount_cents: 200,
       amount_currency: 'CHF',
-      invoice: credit_note.invoice,
+      payable: credit_note.invoice
     )
   end
 
@@ -29,7 +29,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
       invoice:,
       refund_amount_cents: 134,
       refund_amount_currency: 'CHF',
-      refund_status: :pending,
+      refund_status: :pending
     )
   end
 
@@ -43,8 +43,8 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
             id: 're_123456',
             status: 'succeeded',
             amount: 134,
-            currency: 'chf',
-          ),
+            currency: 'chf'
+          )
         )
       allow(SegmentTrackJob).to receive(:perform_later)
     end
@@ -80,20 +80,20 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
         properties: {
           organization_id: credit_note.organization.id,
           credit_note_id: credit_note.id,
-          refund_status: 'succeeded',
-        },
+          refund_status: 'succeeded'
+        }
       )
     end
 
     context 'with an error on stripe' do
       before do
         allow(Stripe::Refund).to receive(:create)
-          .and_raise(Stripe::InvalidRequestError.new('error', {}))
+          .and_raise(::Stripe::InvalidRequestError.new('error', {}))
       end
 
       it 'delivers an error webhook' do
         expect { stripe_service.create }
-          .to raise_error(Stripe::InvalidRequestError)
+          .to raise_error(::Stripe::InvalidRequestError)
 
         expect(SendWebhookJob).to have_been_enqueued
           .with(
@@ -102,8 +102,8 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
             provider_customer_id: stripe_customer.provider_customer_id,
             provider_error: {
               message: 'error',
-              error_code: nil,
-            },
+              error_code: nil
+            }
           )
       end
     end
@@ -114,7 +114,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
           :credit_note,
           customer:,
           refund_amount_cents: 0,
-          refund_amount_currency: 'CHF',
+          refund_amount_currency: 'CHF'
         )
       end
 
@@ -177,7 +177,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
     it 'updates the refund status' do
       result = stripe_service.update_status(
         provider_refund_id: refund.provider_refund_id,
-        status: 'succeeded',
+        status: 'succeeded'
       )
 
       aggregate_failures do
@@ -195,7 +195,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
 
       stripe_service.update_status(
         provider_refund_id: refund.provider_refund_id,
-        status: 'succeeded',
+        status: 'succeeded'
       )
 
       expect(SegmentTrackJob).to have_received(:perform_later).with(
@@ -204,8 +204,8 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
         properties: {
           organization_id: credit_note.organization.id,
           credit_note_id: credit_note.id,
-          refund_status: 'succeeded',
-        },
+          refund_status: 'succeeded'
+        }
       )
     end
 
@@ -215,7 +215,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
       it 'returns an empty result' do
         result = stripe_service.update_status(
           provider_refund_id: 'foo',
-          status: 'succeeded',
+          status: 'succeeded'
         )
 
         aggregate_failures do
@@ -229,7 +229,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
           result = stripe_service.update_status(
             provider_refund_id: 'foo',
             status: 'succeeded',
-            metadata: {lago_invoice_id: SecureRandom.uuid},
+            metadata: {lago_invoice_id: SecureRandom.uuid}
           )
 
           aggregate_failures do
@@ -245,7 +245,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
             result = stripe_service.update_status(
               provider_refund_id: 're_123456',
               status: 'succeeded',
-              metadata: {lago_invoice_id: invoice.id},
+              metadata: {lago_invoice_id: invoice.id}
             )
 
             aggregate_failures do
@@ -262,7 +262,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
       it 'fails' do
         result = stripe_service.update_status(
           provider_refund_id: refund.provider_refund_id,
-          status: 'invalid',
+          status: 'invalid'
         )
 
         aggregate_failures do
@@ -280,7 +280,7 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
       it 'delivers an error webhook' do
         result = stripe_service.update_status(
           provider_refund_id: refund.provider_refund_id,
-          status: 'failed',
+          status: 'failed'
         )
 
         aggregate_failures do
@@ -297,8 +297,8 @@ RSpec.describe CreditNotes::Refunds::StripeService, type: :service do
               provider_customer_id: stripe_customer.provider_customer_id,
               provider_error: {
                 message: 'Payment refund failed',
-                error_code: nil,
-              },
+                error_code: nil
+              }
             )
         end
       end

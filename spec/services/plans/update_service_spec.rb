@@ -10,7 +10,6 @@ RSpec.describe Plans::UpdateService, type: :service do
   let(:plan) { create(:plan, organization:) }
   let(:plan_name) { 'Updated plan name' }
   let(:plan_invoice_display_name) { 'Updated plan invoice display name' }
-  let(:group) { create(:group, billable_metric: sum_billable_metric) }
   let(:sum_billable_metric) { create(:sum_billable_metric, organization:, recurring: true) }
   let(:billable_metric) { create(:billable_metric, organization:) }
   let(:tax1) { create(:tax, organization:) }
@@ -27,7 +26,7 @@ RSpec.describe Plans::UpdateService, type: :service do
       amount_cents: 200,
       amount_currency: 'EUR',
       tax_codes: [tax2.code],
-      charges: charges_args,
+      charges: charges_args
     }
   end
 
@@ -35,7 +34,7 @@ RSpec.describe Plans::UpdateService, type: :service do
     {
       amount_cents: minimum_commitment_amount_cents,
       invoice_display_name: minimum_commitment_invoice_display_name,
-      tax_codes: [tax1.code],
+      tax_codes: [tax1.code]
     }
   end
 
@@ -49,13 +48,7 @@ RSpec.describe Plans::UpdateService, type: :service do
         charge_model: 'standard',
         invoice_display_name: 'charge1',
         min_amount_cents: 100,
-        group_properties: [
-          {
-            group_id: group.id,
-            values: {amount: '100'},
-          },
-        ],
-        tax_codes: [tax1.code],
+        tax_codes: [tax1.code]
       },
       {
         billable_metric_id: billable_metric.id,
@@ -67,18 +60,55 @@ RSpec.describe Plans::UpdateService, type: :service do
               from_value: 0,
               to_value: 10,
               per_unit_amount: '2',
-              flat_amount: '0',
+              flat_amount: '0'
             },
             {
               from_value: 11,
               to_value: nil,
               per_unit_amount: '3',
-              flat_amount: '3',
-            },
-          ],
-        },
-      },
+              flat_amount: '3'
+            }
+          ]
+        }
+      }
     ]
+  end
+
+  let(:usage_thresholds_args) do
+    [
+      {
+        id: threshold1.id,
+        threshold_display_name: 'Threshold 1',
+        amount_cents: 1_000
+      },
+      {
+        id: threshold2.id,
+        threshold_display_name: 'Threshold 2',
+        amount_cents: 10_000
+      },
+      {
+        id: threshold3.id,
+        threshold_display_name: 'Threshold 3',
+        amount_cents: 100,
+        recurring: true
+      }
+    ]
+  end
+
+  let(:threshold1) do
+    create(:usage_threshold, plan:, threshold_display_name: 'Threshold 1', amount_cents: 1)
+  end
+
+  let(:threshold2) do
+    create(:usage_threshold, plan:, threshold_display_name: 'Threshold 2', amount_cents: 2)
+  end
+
+  let(:threshold3) do
+    create(:usage_threshold, :recurring, plan:, threshold_display_name: 'Threshold 3', amount_cents: 1)
+  end
+
+  let(:threshold5) do
+    create(:usage_threshold, plan:, threshold_display_name: 'Threshold 5', amount_cents: 123)
   end
 
   describe 'call' do
@@ -100,6 +130,190 @@ RSpec.describe Plans::UpdateService, type: :service do
       end
     end
 
+    it 'marks invoices as ready to be refreshed' do
+      subscription = create(:subscription, organization:, plan:)
+      invoice = create(:invoice, :draft)
+      create(:invoice_subscription, invoice:, subscription:)
+
+      expect { plans_service.call }.to change { invoice.reload.ready_to_be_refreshed }.to(true)
+    end
+
+    context 'with cascade option' do
+      let(:child_plan) { create(:plan, organization:, parent_id:) }
+      let(:parent_id) { plan.id }
+
+      before do
+        child_plan
+        update_args[:cascade_updates] = true
+      end
+
+      context 'when cascade is true and there is no children plans' do
+        let(:parent_id) { nil }
+
+        it 'does not enqueue the job for updating subscription fee' do
+          expect do
+            plans_service.call
+          end.not_to have_enqueued_job(Plans::UpdateAmountJob)
+        end
+      end
+
+      context 'when cascade is true and child plan is already updated' do
+        let(:child_plan) { create(:plan, organization:, parent_id:, amount_cents: 150) }
+
+        it 'does not enqueue the job for updating subscription fee' do
+          expect do
+            plans_service.call
+          end.not_to have_enqueued_job(Plans::UpdateAmountJob)
+        end
+      end
+
+      context 'when cascade is true with children plans not touched' do
+        it 'enqueues the job for updating subscription fee' do
+          expect do
+            plans_service.call
+          end.to have_enqueued_job(Plans::UpdateAmountJob)
+        end
+      end
+
+      context 'when cascade is false with children plans not touched' do
+        before do
+          update_args[:cascade_updates] = false
+        end
+
+        it 'does not enqueue the job for updating subscription fee' do
+          expect do
+            plans_service.call
+          end.not_to have_enqueued_job(Plans::UpdateAmountJob)
+        end
+      end
+    end
+
+    context 'when thresholds are present' do
+      let(:usage_thresholds) do
+        updated_plan.usage_thresholds.order(threshold_display_name: :asc)
+      end
+
+      let(:updated_plan) { plans_service.call.plan }
+
+      before do
+        threshold1
+        threshold2
+        threshold3
+        threshold5
+      end
+
+      context 'with premium license' do
+        around { |test| lago_premium!(&test) }
+
+        context 'when progressive billing premium integration is present' do
+          before do
+            plan.organization.update!(premium_integrations: ['progressive_billing'])
+          end
+
+          context 'when thresholds args are passed' do
+            before do
+              update_args[:usage_thresholds] = usage_thresholds_args
+
+              update_args[:usage_thresholds] << {
+                threshold_display_name: 'Threshold 4',
+                amount_cents: 4_000
+              }
+            end
+
+            it 'updates the existing thresholds' do
+              aggregate_failures do
+                expect(usage_thresholds.first).to have_attributes(amount_cents: 1_000)
+                expect(usage_thresholds.second).to have_attributes(amount_cents: 10_000)
+                expect(usage_thresholds.third).to have_attributes(amount_cents: 100)
+                expect(usage_thresholds.fourth).to have_attributes(amount_cents: 4_000)
+              end
+            end
+
+            it 'creates new thresholds and deletes thresholds that are not in the args' do
+              aggregate_failures do
+                expect(plan.usage_thresholds.count).to eq(4)
+                expect(plan.usage_thresholds.order(threshold_display_name: :asc).last.amount_cents).to eq(123)
+                expect(usage_thresholds.count).to eq(4)
+                expect(usage_thresholds.fourth).to have_attributes(amount_cents: 4_000)
+              end
+            end
+          end
+
+          context 'when thresholds args are passed as empty array' do
+            before do
+              update_args[:usage_thresholds] = []
+            end
+
+            it 'deletes all existing thresholds' do
+              expect(usage_thresholds.count).to eq(0)
+            end
+          end
+
+          context 'when thresholds args are not passed' do
+            it 'does not update the thresholds' do
+              aggregate_failures do
+                expect(usage_thresholds.count).to eq(4)
+                expect(usage_thresholds.fourth).to have_attributes(
+                  threshold_display_name: 'Threshold 5'
+                )
+              end
+            end
+          end
+        end
+      end
+    end
+
+    context 'when thresholds are not present' do
+      let(:usage_thresholds) do
+        updated_plan.usage_thresholds.order(threshold_display_name: :asc)
+      end
+
+      let(:updated_plan) { plans_service.call.plan }
+
+      context 'without premium license' do
+        it 'does not create progressive billing thresholds' do
+          expect(usage_thresholds.count).to eq(0)
+        end
+      end
+
+      context 'with premium license' do
+        around { |test| lago_premium!(&test) }
+
+        context 'when progressive billing premium integration is not present' do
+          it 'does not create progressive billing thresholds' do
+            expect(usage_thresholds.count).to eq(0)
+          end
+        end
+
+        context 'when progressive billing premium integration is present' do
+          before do
+            plan.organization.update!(premium_integrations: ['progressive_billing'])
+          end
+
+          context 'when thresholds args are passed' do
+            before do
+              update_args[:usage_thresholds] = usage_thresholds_args
+            end
+
+            it 'creates new thresholds' do
+              aggregate_failures do
+                expect(usage_thresholds.count).to eq(3)
+                expect(usage_thresholds.first).to have_attributes(
+                  amount_cents: 1_000
+                )
+                expect(usage_thresholds.second).to have_attributes(
+                  amount_cents: 10_000
+                )
+                expect(usage_thresholds.third).to have_attributes(
+                  amount_cents: 100
+                )
+              end
+            end
+          end
+        end
+      end
+    end
+
     context 'when charges are not passed' do
       let(:charge) { create(:standard_charge, plan:) }
       let(:update_args) do
@@ -109,7 +323,7 @@ RSpec.describe Plans::UpdateService, type: :service do
           interval: 'monthly',
           pay_in_advance: false,
           amount_cents: 200,
-          amount_currency: 'EUR',
+          amount_currency: 'EUR'
         }
       end
 
@@ -136,7 +350,7 @@ RSpec.describe Plans::UpdateService, type: :service do
           interval: 'monthly',
           pay_in_advance: false,
           amount_cents: 5,
-          amount_currency: 'EUR',
+          amount_currency: 'EUR'
         }
       end
 
@@ -185,20 +399,57 @@ RSpec.describe Plans::UpdateService, type: :service do
             interval: 'monthly',
             pay_in_advance: false,
             amount_cents: 200,
-            amount_currency: 'EUR',
+            amount_currency: 'EUR'
           }
         end
+        let(:plan_upgrade_result) { BaseService::Result.new }
 
-        before { pending_subscription }
+        before do
+          allow(Subscriptions::PlanUpgradeService)
+            .to receive(:call)
+            .and_return(plan_upgrade_result)
 
-        it 'correctly cancels pending subscriptions' do
+          pending_subscription
+        end
+
+        it "upgrades subscription plan" do
+          plans_service.call
+
+          expect(Subscriptions::PlanUpgradeService).to have_received(:call)
+        end
+
+        it 'updates the plan', :aggregate_failures do
           result = plans_service.call
 
-          updated_plan = result.plan
-          aggregate_failures do
-            expect(updated_plan.name).to eq('Updated plan name')
-            expect(updated_plan.amount_cents).to eq(200)
-            expect(Subscription.find_by(id: pending_subscription.id).status).to eq('canceled')
+          expect(result.plan.name).to eq('Updated plan name')
+          expect(result.plan.amount_cents).to eq(200)
+        end
+
+        context "when pending subscription does not have a previous one" do
+          let(:pending_subscription) do
+            create(:subscription, plan:, status: :pending, previous_subscription_id: nil)
+          end
+
+          it "does not upgrade it" do
+            plans_service.call
+
+            expect(Subscriptions::PlanUpgradeService).not_to have_received(:call)
+          end
+        end
+
+        context "when subscription upgrade fails" do
+          let(:plan_upgrade_result) do
+            BaseService::Result.new.validation_failure!(
+              errors: {billing_time: ['value_is_invalid']}
+            )
+          end
+
+          it "returns an error", :aggregate_failures do
+            result = plans_service.call
+
+            expect(result).not_to be_success
+            expect(result.error).to be_a(BaseService::ValidationFailure)
+            expect(result.error.messages).to eq({billing_time: ["value_is_invalid"]})
           end
         end
       end
@@ -242,9 +493,9 @@ RSpec.describe Plans::UpdateService, type: :service do
               pay_in_advance: false,
               invoiceable: true,
               properties: {
-                amount: '100',
-              },
-            },
+                amount: '100'
+              }
+            }
           ]
         end
 
@@ -270,17 +521,17 @@ RSpec.describe Plans::UpdateService, type: :service do
                     from_value: 0,
                     to_value: 10,
                     rate: '3',
-                    flat_amount: '0',
+                    flat_amount: '0'
                   },
                   {
                     from_value: 11,
                     to_value: nil,
                     rate: '2',
-                    flat_amount: '3',
-                  },
-                ],
-              },
-            },
+                    flat_amount: '3'
+                  }
+                ]
+              }
+            }
           ]
         end
 
@@ -304,8 +555,8 @@ RSpec.describe Plans::UpdateService, type: :service do
               {
                 pay_in_advance: true,
                 invoiceable: false,
-                charge_model: 'graduated_percentage',
-              },
+                charge_model: 'graduated_percentage'
+              }
             )
           end
         end
@@ -503,8 +754,8 @@ RSpec.describe Plans::UpdateService, type: :service do
           billable_metric_id: sum_billable_metric.id,
           amount_currency: 'USD',
           properties: {
-            amount: '300',
-          },
+            amount: '300'
+          }
         )
       end
 
@@ -513,7 +764,7 @@ RSpec.describe Plans::UpdateService, type: :service do
           :billable_metric_filter,
           billable_metric: sum_billable_metric,
           key: 'payment_method',
-          values: %w[card physical],
+          values: %w[card physical]
         )
       end
 
@@ -534,30 +785,24 @@ RSpec.describe Plans::UpdateService, type: :service do
               pay_in_advance: true,
               prorated: true,
               invoiceable: false,
-              group_properties: [
-                {
-                  group_id: group.id,
-                  values: {amount: '100'},
-                },
-              ],
               filters: [
                 {
                   invoice_display_name: 'Card filter',
                   properties: {amount: '90'},
-                  values: {billable_metric_filter.key => ['card']},
-                },
-              ],
+                  values: {billable_metric_filter.key => ['card']}
+                }
+              ]
             },
             {
               billable_metric_id: billable_metric.id,
               charge_model: 'standard',
               min_amount_cents: 100,
               properties: {
-                amount: '300',
+                amount: '300'
               },
-              tax_codes: [tax1.code],
-            },
-          ],
+              tax_codes: [tax1.code]
+            }
+          ]
         }
       end
 
@@ -569,25 +814,20 @@ RSpec.describe Plans::UpdateService, type: :service do
       end
 
       it 'updates existing charge' do
-        expect { plans_service.call }
-          .to change(GroupProperty, :count).by(1)
+        plans_service.call
 
         expect(existing_charge.reload).to have_attributes(
           prorated: true,
-          properties: {'amount' => '0'},
-        )
-        expect(existing_charge.group_properties.first).to have_attributes(
-          group_id: group.id,
-          values: {'amount' => '100'},
+          properties: {'amount' => '0'}
         )
 
         expect(existing_charge.filters.first).to have_attributes(
           invoice_display_name: 'Card filter',
-          properties: {'amount' => '90'},
+          properties: {'amount' => '90'}
         )
         expect(existing_charge.filters.first.values.first).to have_attributes(
           billable_metric_filter_id: billable_metric_filter.id,
-          values: ['card'],
+          values: ['card']
         )
       end
 
@@ -609,6 +849,106 @@ RSpec.describe Plans::UpdateService, type: :service do
           expect(charge.min_amount_cents).to eq(100)
         end
       end
+
+      context 'with cascade option and update charge case' do
+        let(:child_plan) { create(:plan, organization:, parent_id:) }
+        let(:parent_id) { plan.id }
+        let(:charge_parent_id) { existing_charge.id }
+        let(:child_charge) do
+          create(
+            :standard_charge,
+            plan_id: child_plan.id,
+            parent_id: charge_parent_id,
+            billable_metric_id: sum_billable_metric.id,
+            properties: {amount: '300'}
+          )
+        end
+
+        before do
+          child_charge
+          update_args[:cascade_updates] = true
+        end
+
+        context 'when cascade is true and there is no children plans' do
+          let(:parent_id) { nil }
+
+          it 'does not enqueue the job for updating charge' do
+            expect do
+              plans_service.call
+            end.not_to have_enqueued_job(Charges::UpdateJob)
+          end
+        end
+
+        context 'when cascade is true and there are children plans' do
+          it 'enqueues the job for updating charge' do
+            expect do
+              plans_service.call
+            end.to have_enqueued_job(Charges::UpdateJob)
+          end
+        end
+
+        context 'when cascade is true and there are children plans without link to parent charge' do
+          let(:charge_parent_id) { nil }
+
+          it 'does not enqueue the job for updating charge' do
+            expect do
+              plans_service.call
+            end.not_to have_enqueued_job(Charges::UpdateJob)
+          end
+        end
+
+        context 'when cascade is false with children plans' do
+          before do
+            update_args[:cascade_updates] = false
+          end
+
+          it 'does not enqueue the job for updating charge' do
+            expect do
+              plans_service.call
+            end.not_to have_enqueued_job(Charges::DestroyJob)
+          end
+        end
+      end
+
+      context 'with cascade option and create charge case' do
+        let(:child_plan) { create(:plan, organization:, parent_id:) }
+        let(:parent_id) { plan.id }
+
+        before do
+          child_plan
+          update_args[:cascade_updates] = true
+        end
+
+        context 'when cascade is true and there is no children plans' do
+          let(:parent_id) { nil }
+
+          it 'does not enqueue the job for creating new charge' do
+            expect do
+              plans_service.call
+            end.not_to have_enqueued_job(Charges::CreateJob)
+          end
+        end
+
+        context 'when cascade is true and there are children plans' do
+          it 'enqueues the job for creating new charge' do
+            expect do
+              plans_service.call
+            end.to have_enqueued_job(Charges::CreateJob)
+          end
+        end
+
+        context 'when cascade is false with children plans' do
+          before do
+            update_args[:cascade_updates] = false
+          end
+
+          it 'does not enqueue the job for creating new charge' do
+            expect do
+              plans_service.call
+            end.not_to have_enqueued_job(Charges::CreateJob)
+          end
+        end
+      end
     end
 
     context 'with existing charge attached to subscription' do
@@ -619,8 +959,8 @@ RSpec.describe Plans::UpdateService, type: :service do
           billable_metric_id: sum_billable_metric.id,
           amount_currency: 'USD',
           properties: {
-            amount: '300',
-          },
+            amount: '300'
+          }
         )
       end
 
@@ -636,9 +976,9 @@ RSpec.describe Plans::UpdateService, type: :service do
               id: existing_charge.id,
               billable_metric_id: sum_billable_metric.id,
               charge_model: 'standard',
-              tax_codes: [tax2.code],
-            },
-          ],
+              tax_codes: [tax2.code]
+            }
+          ]
         }
       end
 
@@ -659,7 +999,7 @@ RSpec.describe Plans::UpdateService, type: :service do
           :standard_charge,
           plan_id: plan.id,
           billable_metric_id: billable_metric.id,
-          properties: {amount: '300'},
+          properties: {amount: '300'}
         )
       end
 
@@ -672,18 +1012,15 @@ RSpec.describe Plans::UpdateService, type: :service do
           pay_in_advance: false,
           amount_cents: 200,
           amount_currency: 'EUR',
-          charges: [],
+          charges: []
         }
       end
 
       let(:billable_metric) { sum_billable_metric }
-      let(:group_property) { create(:group_property, group:, charge:) }
-      let(:group) { create(:group, billable_metric:) }
 
       before do
         subscription
         charge
-        group_property
       end
 
       it 'discards the charge' do
@@ -693,18 +1030,64 @@ RSpec.describe Plans::UpdateService, type: :service do
         end
       end
 
-      it 'discards group properties related to the charge' do
-        freeze_time do
-          expect { plans_service.call }
-            .to change { group_property.reload.deleted_at }.from(nil).to(Time.current)
+      context 'with cascade option' do
+        let(:child_plan) { create(:plan, organization:, parent_id:) }
+        let(:parent_id) { plan.id }
+        let(:charge_parent_id) { charge.id }
+        let(:child_charge) do
+          create(
+            :standard_charge,
+            plan_id: child_plan.id,
+            parent_id: charge_parent_id,
+            billable_metric_id: billable_metric.id,
+            properties: {amount: '300'}
+          )
         end
-      end
 
-      it 'marks invoices as ready to be refreshed' do
-        invoice = create(:invoice, :draft)
-        create(:invoice_subscription, subscription:, invoice:)
+        before do
+          child_charge
+          update_args[:cascade_updates] = true
+        end
 
-        expect { plans_service.call }.to change { invoice.reload.ready_to_be_refreshed }.to(true)
+        context 'when cascade is true and there is no children plans' do
+          let(:parent_id) { nil }
+
+          it 'does not enqueue the job for removing charge' do
+            expect do
+              plans_service.call
+            end.not_to have_enqueued_job(Charges::DestroyJob)
+          end
+        end
+
+        context 'when cascade is true and there are children plans' do
+          it 'enqueues the job for removing charge' do
+            expect do
+              plans_service.call
+            end.to have_enqueued_job(Charges::DestroyJob)
+          end
+        end
+
+        context 'when cascade is true and there are children plans without link to parent charge' do
+          let(:charge_parent_id) { nil }
+
+          it 'does not enqueue the job for removing charge' do
+            expect do
+              plans_service.call
+            end.not_to have_enqueued_job(Charges::DestroyJob)
+          end
+        end
+
+        context 'when cascade is false with children plans' do
+          before do
+            update_args[:cascade_updates] = false
+          end
+
+          it 'does not enqueue the job for removing charge' do
+            expect do
+              plans_service.call
+            end.not_to have_enqueued_job(Charges::DestroyJob)
+          end
+        end
       end
     end
 
@@ -715,8 +1098,8 @@ RSpec.describe Plans::UpdateService, type: :service do
           plan_id: plan.id,
           billable_metric_id: sum_billable_metric.id,
           properties: {
-            amount: '300',
-          },
+            amount: '300'
+          }
         )
       end
 
@@ -735,17 +1118,17 @@ RSpec.describe Plans::UpdateService, type: :service do
               billable_metric_id: sum_billable_metric.id,
               charge_model: 'standard',
               properties: {
-                amount: '100',
-              },
+                amount: '100'
+              }
             },
             {
               billable_metric_id: billable_metric.id,
               charge_model: 'standard',
               properties: {
-                amount: '300',
-              },
-            },
-          ],
+                amount: '300'
+              }
+            }
+          ]
         }
       end
 

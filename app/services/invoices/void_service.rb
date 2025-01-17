@@ -12,7 +12,12 @@ module Invoices
 
       result.invoice = invoice
 
-      invoice.void!
+      ActiveRecord::Base.transaction do
+        invoice.payment_overdue = false if invoice.payment_overdue?
+        invoice.void!
+
+        flag_lifetime_usage_for_refresh
+      end
 
       invoice.credits.each do |credit|
         res = CreditNotes::RecreditService.call(credit:)
@@ -27,7 +32,9 @@ module Invoices
         end
       end
 
-      SendWebhookJob.perform_later('invoice.voided', result.invoice) if invoice.organization.webhook_endpoints.any?
+      SendWebhookJob.perform_later('invoice.voided', result.invoice)
+      Invoices::ProviderTaxes::VoidJob.perform_later(invoice:)
+      Integrations::Aggregator::Invoices::Hubspot::UpdateJob.perform_later(invoice:) if invoice.should_update_hubspot_invoice?
 
       result
     rescue AASM::InvalidTransition => _e
@@ -37,5 +44,9 @@ module Invoices
     private
 
     attr_reader :invoice
+
+    def flag_lifetime_usage_for_refresh
+      LifetimeUsages::FlagRefreshFromInvoiceService.call(invoice:).raise_if_error!
+    end
   end
 end

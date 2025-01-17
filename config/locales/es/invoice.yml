@@ -3,6 +3,7 @@ es:
   invoice:
     all_subscriptions: Todos los suscripciones
     all_usage_based_fees: Todos los cargos basados en el uso
+    already_paid: Ya pagado
     amount: Total (excl. impuestos)
     amount_with_tax: Total (impuestos incl.)
     amount_without_tax: Total (impuestos excl.)
@@ -16,6 +17,7 @@ es:
     date_to: hasta
     details: Detalles de %{resource}
     document_name: Factura
+    document_tax_name: Factura fiscal
     due_date: Vence el %{date}
     fee_prorated: La tarifa se prorratea según los días de uso, el precio unitario mostrado es un promedio
     fees_from_to_date: Cargos desde %{from_date} hasta %{to_date}
@@ -38,6 +40,8 @@ es:
       fee_per_package: Tarifa por paquete
       fee_per_package_unit_price: "%{amount} por %{package_size}"
       free_units_for_the_first: Unidades gratuitas para las %{count} primeras
+    paid_invoice: Factura pagada
+    paid_tax_invoice: Factura fiscal pagada
     payment_term: Plazo de pago neto
     payment_term_days: "%{net_payment_term} días"
     percentage:
@@ -51,8 +55,10 @@ es:
     prepaid_credit_invoice: Factura anticipada
     prepaid_credits: Créditos prepagados
     prepaid_credits_with_value: Créditos prepagados - %{wallet_name}
+    progressive_billing_credit: Uso ya facturado
     quarter: trimestre
     quarterly: Trimestral
+    reached_usage_threshold: Esta facturación progresiva se genera porque su uso acumulado ha alcanzado los %{usage_amount}, superando el umbral de %{threshold_amount}.
     see_breakdown: Consulte el desglose a continuación
     sub_total: Subtotal
     sub_total_with_tax: Subtotal (impuestos incl.)
@@ -62,6 +68,14 @@ es:
     tax: Impuesto
     tax_identification_number: 'ID del impuesto: %{tax_identification_number}'
     tax_name: "%{name} (%{rate}% sobre %{amount})"
+    tax_name_only:
+      customer_exempt: El cliente está exento de impuestos
+      juris_has_no_tax: Sin impuesto
+      juris_not_taxed: Sin impuesto
+      not_collecting: Sin impuesto
+      reverse_charge: Inversión del sujeto pasivo - Responsabilidad fiscal trasladada al cliente
+      transaction_exempt: El cliente está exento de impuestos
+      unknown_taxation: Desconocido
     tax_name_with_details: "%{name} (%{rate}%)"
     tax_rate: Tasas de impuestos
     taxes:

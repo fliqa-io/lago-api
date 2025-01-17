@@ -10,8 +10,8 @@ RSpec.describe Mutations::AdjustedFees::Create, type: :graphql do
     {
       feeId: fee.id,
       units: 4,
-      unitAmountCents: 1000,
-      invoiceDisplayName: 'Hello',
+      unitPreciseAmount: '10.00001',
+      invoiceDisplayName: 'Hello'
     }
   end
 
@@ -41,7 +41,7 @@ RSpec.describe Mutations::AdjustedFees::Create, type: :graphql do
       current_organization: membership.organization,
       permissions: required_permission,
       query: mutation,
-      variables: {input:},
+      variables: {input:}
     )
 
     expect(result['data']['createAdjustedFee']['id']).to eq(fee.id)
@@ -56,7 +56,7 @@ RSpec.describe Mutations::AdjustedFees::Create, type: :graphql do
         current_organization: membership.organization,
         permissions: required_permission,
         query: mutation,
-        variables: {input:},
+        variables: {input:}
       )
 
       expect_forbidden_error(result)

@@ -24,7 +24,7 @@ RSpec.describe Resolvers::Integrations::SubsidiariesResolver, type: :graphql do
     {
       'Connection-Id' => integration.connection_id,
       'Authorization' => "Bearer #{ENV["NANGO_SECRET_KEY"]}",
-      'Provider-Config-Key' => 'netsuite',
+      'Provider-Config-Key' => 'netsuite-tba'
     }
   end
 
@@ -52,7 +52,7 @@ RSpec.describe Resolvers::Integrations::SubsidiariesResolver, type: :graphql do
       current_organization: organization,
       permissions: required_permission,
       query:,
-      variables: {integrationId: integration.id},
+      variables: {integrationId: integration.id}
     )
 
     subsidiaries = result['data']['integrationSubsidiaries']

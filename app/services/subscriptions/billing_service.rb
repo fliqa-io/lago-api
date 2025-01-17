@@ -2,17 +2,20 @@
 
 module Subscriptions
   class BillingService < BaseService
-    def call
-      # Keep track of billing time for retry and tracking purpose
-      billing_timestamp = today.to_i
+    def initialize(billing_at: Time.current)
+      @today = billing_at
 
+      super
+    end
+
+    def call
       billable_subscriptions.group_by(&:customer_id).each do |_customer_id, customer_subscriptions|
         billing_subscriptions = []
         customer_subscriptions.each do |subscription|
           if subscription.next_subscription&.pending?
             # NOTE: In case of downgrade, subscription remain active until the end of the period,
             #       a next subscription is pending, the current one must be terminated
-            Subscriptions::TerminateJob.perform_later(subscription, billing_timestamp)
+            Subscriptions::TerminateJob.perform_later(subscription, today.to_i)
           else
             billing_subscriptions << subscription
           end
@@ -20,17 +23,17 @@ module Subscriptions
 
         BillSubscriptionJob.perform_later(
           billing_subscriptions,
-          billing_timestamp,
-          invoicing_reason: :subscription_periodic,
+          today.to_i,
+          invoicing_reason: :subscription_periodic
         )
+
+        BillNonInvoiceableFeesJob.perform_later(billing_subscriptions, today)
       end
     end
 
     private
 
-    def today
-      @today ||= Time.current
-    end
+    attr_reader :today
 
     # NOTE: Retrieve list of subscriptions that should be billed today
     def billable_subscriptions
@@ -72,8 +75,11 @@ module Subscriptions
         WHERE
           -- Exclude subscriptions already billed today
           already_billed_today.invoiced_count IS NULL
-          -- Do not bill subscriptions that started this day, they are billed by another job
-          AND DATE(subscriptions.started_at#{at_time_zone}) != DATE(:today#{at_time_zone})
+
+          -- Do not bill subscriptions that have started _after_ :today (excludes subscriptions starting today! and also importantly invoices that might have started after this service is run)
+          AND DATE(subscriptions.started_at#{at_time_zone}) < DATE(:today#{at_time_zone})
+          -- Do not bill subscriptions that were not created yet
+          and DATE(subscriptions.created_at) <= Date(:today)
           AND (
             subscriptions.ending_at IS NULL OR
             DATE(subscriptions.ending_at#{at_time_zone}) != DATE(:today#{at_time_zone})
@@ -104,7 +110,7 @@ module Subscriptions
       base_subscription_scope(
         billing_time: :calendar,
         interval: :weekly,
-        conditions: ["EXTRACT(ISODOW FROM (:today#{at_time_zone})) = 1"],
+        conditions: ["EXTRACT(ISODOW FROM (:today#{at_time_zone})) = 1"]
       )
     end
 
@@ -113,7 +119,7 @@ module Subscriptions
       base_subscription_scope(
         billing_time: :calendar,
         interval: :monthly,
-        conditions: ["DATE_PART('day', (:today#{at_time_zone})) = 1"],
+        conditions: ["DATE_PART('day', (:today#{at_time_zone})) = 1"]
       )
     end
 
@@ -130,7 +136,7 @@ module Subscriptions
       base_subscription_scope(
         billing_time: :calendar,
         interval: :quarterly,
-        conditions: [billing_month, billing_day],
+        conditions: [billing_month, billing_day]
       )
     end
 
@@ -141,8 +147,8 @@ module Subscriptions
         interval: :yearly,
         conditions: [
           "DATE_PART('day', (:today#{at_time_zone})) = 1",
-          "plans.bill_charges_monthly = 't'",
-        ],
+          "plans.bill_charges_monthly = 't'"
+        ]
       )
     end
 
@@ -153,8 +159,8 @@ module Subscriptions
         interval: :yearly,
         conditions: [
           "DATE_PART('month', (:today#{at_time_zone})) = 1",
-          "DATE_PART('day', (:today#{at_time_zone})) = 1",
-        ],
+          "DATE_PART('day', (:today#{at_time_zone})) = 1"
+        ]
       )
     end
 
@@ -164,8 +170,8 @@ module Subscriptions
         interval: :weekly,
         conditions: [
           "EXTRACT(ISODOW FROM (subscriptions.subscription_at#{at_time_zone})) =
-          EXTRACT(ISODOW FROM (:today#{at_time_zone}))",
-        ],
+          EXTRACT(ISODOW FROM (:today#{at_time_zone}))"
+        ]
       )
     end
 
@@ -173,7 +179,7 @@ module Subscriptions
       base_subscription_scope(
         billing_time: :anniversary,
         interval: :monthly,
-        conditions: [<<-SQL],
+        conditions: [<<-SQL]
           DATE_PART('day', (subscriptions.subscription_at#{at_time_zone})) = ANY (
             -- Check if today is the last day of the month
             CASE WHEN DATE_PART('day', (#{end_of_month})) = DATE_PART('day', :today#{at_time_zone})
@@ -224,7 +230,7 @@ module Subscriptions
       base_subscription_scope(
         billing_time: :anniversary,
         interval: :quarterly,
-        conditions: [billing_month, billing_day],
+        conditions: [billing_month, billing_day]
       )
     end
 
@@ -255,7 +261,7 @@ module Subscriptions
       base_subscription_scope(
         billing_time: :anniversary,
         interval: :yearly,
-        conditions: [billing_month, billing_day],
+        conditions: [billing_month, billing_day]
       )
     end
 
@@ -279,8 +285,8 @@ module Subscriptions
         interval: :yearly,
         conditions: [
           "plans.bill_charges_monthly = 't'",
-          billing_day,
-        ],
+          billing_day
+        ]
       )
     end
 

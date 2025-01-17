@@ -13,11 +13,8 @@ module Webhooks
         ::V1::CustomerSerializer.new(
           object,
           root_name: object_type,
+          includes: %i[integration_customers]
         )
-      end
-
-      def webhook_type
-        'customer.accounting_provider_created'
       end
 
       def object_type

@@ -10,7 +10,7 @@ RSpec.describe Credits::AppliedPrepaidCreditService do
       :invoice,
       customer:,
       currency: 'EUR',
-      total_amount_cents: amount_cents,
+      total_amount_cents: amount_cents
     )
   end
   let(:amount_cents) { 100 }
@@ -75,6 +75,22 @@ RSpec.describe Credits::AppliedPrepaidCreditService do
 
         expect(wallet.balance).to eq(0.0)
         expect(wallet.credits_balance).to eq(0.0)
+      end
+    end
+
+    context 'when already applied' do
+      let(:wallet_transaction) { create(:wallet_transaction, wallet:, invoice:, transaction_type: 'outbound') }
+
+      before { wallet_transaction }
+
+      it 'returns error' do
+        result = credit_service.call
+
+        aggregate_failures do
+          expect(result).not_to be_success
+          expect(result.error.code).to eq('already_applied')
+          expect(result.error.error_message).to eq('Prepaid credits already applied')
+        end
       end
     end
   end

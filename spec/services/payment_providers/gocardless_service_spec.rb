@@ -35,9 +35,42 @@ RSpec.describe PaymentProviders::GocardlessService, type: :service do
           access_code:,
           code:,
           name:,
-          success_redirect_url:,
+          success_redirect_url:
         )
       end.to change(PaymentProviders::GocardlessProvider, :count).by(1)
+    end
+
+    context 'when code was changed' do
+      let(:new_code) { 'updated_code_3' }
+      let(:gocardless_customer) { create(:gocardless_customer, payment_provider:, customer:) }
+      let(:customer) { create(:customer, organization:) }
+
+      let(:payment_provider) do
+        create(
+          :gocardless_provider,
+          organization:,
+          code:,
+          name:,
+          access_token: 'secret'
+        )
+      end
+
+      before { gocardless_customer }
+
+      it 'updates payment provider codes of all customers' do
+        result = gocardless_service.create_or_update(
+          id: payment_provider.id,
+          organization:,
+          code: new_code,
+          name:,
+          access_token: 'secret'
+        )
+
+        aggregate_failures do
+          expect(result).to be_success
+          expect(result.gocardless_provider.customers.first.payment_provider_code).to eq(new_code)
+        end
+      end
     end
 
     context 'when organization already have a gocardless provider' do
@@ -53,7 +86,7 @@ RSpec.describe PaymentProviders::GocardlessService, type: :service do
           access_code:,
           code:,
           name:,
-          success_redirect_url:,
+          success_redirect_url:
         )
 
         expect(result).to be_success
@@ -74,7 +107,7 @@ RSpec.describe PaymentProviders::GocardlessService, type: :service do
       it 'returns an error result' do
         result = gocardless_service.create_or_update(
           organization:,
-          access_code:,
+          access_code:
         )
 
         aggregate_failures do
@@ -82,121 +115,6 @@ RSpec.describe PaymentProviders::GocardlessService, type: :service do
           expect(result.error).to be_a(BaseService::ValidationFailure)
           expect(result.error.messages[:access_token]).to eq(['value_is_mandatory'])
         end
-      end
-    end
-  end
-
-  describe '.handle_incoming_webhook' do
-    let(:gocardless_provider) { create(:gocardless_provider, organization:) }
-    let(:events_result) { events['events'].map { |event| GoCardlessPro::Resources::Event.new(event) } }
-
-    let(:events) do
-      path = Rails.root.join('spec/fixtures/gocardless/events.json')
-      JSON.parse(File.read(path))
-    end
-
-    before { gocardless_provider }
-
-    it 'checks the webhook' do
-      allow(GoCardlessPro::Webhook).to receive(:parse)
-        .and_return(events_result)
-
-      result = gocardless_service.handle_incoming_webhook(
-        organization_id: organization.id,
-        body: events.to_json,
-        signature: 'signature',
-      )
-
-      expect(result).to be_success
-
-      expect(result.events).to eq(events_result)
-      expect(PaymentProviders::Gocardless::HandleEventJob).to have_been_enqueued
-    end
-
-    context 'when failing to parse payload' do
-      it 'returns an error' do
-        allow(GoCardlessPro::Webhook).to receive(:parse).and_raise(JSON::ParserError)
-
-        result = gocardless_service.handle_incoming_webhook(
-          organization_id: organization.id,
-          body: events.to_json,
-          signature: 'signature',
-        )
-
-        aggregate_failures do
-          expect(result).not_to be_success
-          expect(result.error).to be_a(BaseService::ServiceFailure)
-          expect(result.error.code).to eq('webhook_error')
-          expect(result.error.error_message).to eq('Invalid payload')
-        end
-      end
-    end
-
-    context 'when failing to validate the signature' do
-      it 'returns an error' do
-        allow(GoCardlessPro::Webhook).to receive(:parse)
-          .and_raise(GoCardlessPro::Webhook::InvalidSignatureError.new('error'))
-
-        result = gocardless_service.handle_incoming_webhook(
-          organization_id: organization.id,
-          body: events.to_json,
-          signature: 'signature',
-        )
-
-        aggregate_failures do
-          expect(result).not_to be_success
-          expect(result.error).to be_a(BaseService::ServiceFailure)
-          expect(result.error.code).to eq('webhook_error')
-          expect(result.error.error_message).to eq('Invalid signature')
-        end
-      end
-    end
-  end
-
-  describe '.handle_event' do
-    let(:payment_service) { instance_double(Invoices::Payments::GocardlessService) }
-    let(:service_result) { BaseService::Result.new }
-
-    before do
-      allow(Invoices::Payments::GocardlessService).to receive(:new)
-        .and_return(payment_service)
-      allow(payment_service).to receive(:update_payment_status)
-        .and_return(service_result)
-    end
-
-    context 'when succeeded payment event' do
-      let(:events) do
-        path = Rails.root.join('spec/fixtures/gocardless/events.json')
-        File.read(path)
-      end
-
-      it 'routes the event to an other service' do
-        gocardless_service.handle_event(events_json: events)
-
-        expect(Invoices::Payments::GocardlessService).to have_received(:new)
-        expect(payment_service).to have_received(:update_payment_status)
-      end
-    end
-
-    context 'when succeeded refund event' do
-      let(:refund_service) { instance_double(CreditNotes::Refunds::GocardlessService) }
-      let(:events) do
-        path = Rails.root.join('spec/fixtures/gocardless/events_refund.json')
-        File.read(path)
-      end
-
-      before do
-        allow(CreditNotes::Refunds::GocardlessService).to receive(:new)
-          .and_return(refund_service)
-        allow(refund_service).to receive(:update_status)
-          .and_return(service_result)
-      end
-
-      it 'routes the event to an other service' do
-        gocardless_service.handle_event(events_json: events)
-
-        expect(CreditNotes::Refunds::GocardlessService).to have_received(:new)
-        expect(refund_service).to have_received(:update_status)
       end
     end
   end

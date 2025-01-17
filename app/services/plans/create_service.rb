@@ -2,7 +2,12 @@
 
 module Plans
   class CreateService < BaseService
-    def create(args)
+    def initialize(args)
+      @args = args
+      super
+    end
+
+    def call
       plan = Plan.new(
         organization_id: args[:organization_id],
         name: args[:name],
@@ -14,7 +19,7 @@ module Plans
         amount_cents: args[:amount_cents],
         amount_currency: args[:amount_currency],
         trial_period: args[:trial_period],
-        bill_charges_monthly: (args[:interval]&.to_sym == :yearly) ? args[:bill_charges_monthly] || false : nil,
+        bill_charges_monthly: (args[:interval]&.to_sym == :yearly) ? args[:bill_charges_monthly] || false : nil
       )
 
       # Validates billable metrics
@@ -30,7 +35,15 @@ module Plans
 
         if args[:tax_codes]
           taxes_result = Plans::ApplyTaxesService.call(plan:, tax_codes: args[:tax_codes])
-          return taxes_result unless taxes_result.success?
+          taxes_result.raise_if_error!
+        end
+
+        if args[:usage_thresholds].present? &&
+            License.premium? &&
+            plan.organization.premium_integrations.include?('progressive_billing')
+          args[:usage_thresholds].each do |threshold_args|
+            create_usage_threshold(plan, threshold_args)
+          end
         end
 
         if args[:charges].present?
@@ -39,7 +52,7 @@ module Plans
 
             if charge[:tax_codes].present?
               taxes_result = Charges::ApplyTaxesService.call(charge: new_charge, tax_codes: charge[:tax_codes])
-              return taxes_result unless taxes_result.success?
+              taxes_result.raise_if_error!
             end
           end
         end
@@ -50,9 +63,9 @@ module Plans
           if minimum_commitment[:tax_codes].present?
             taxes_result = Commitments::ApplyTaxesService.call(
               commitment: new_commitment,
-              tax_codes: minimum_commitment[:tax_codes],
+              tax_codes: minimum_commitment[:tax_codes]
             )
-            return taxes_result unless taxes_result.success?
+            taxes_result.raise_if_error!
           end
         end
       end
@@ -62,17 +75,31 @@ module Plans
       result
     rescue ActiveRecord::RecordInvalid => e
       result.record_validation_failure!(record: e.record)
+    rescue BaseService::FailedResult => e
+      e.result
     end
 
     private
+
+    attr_reader :args
 
     def create_commitment(plan, args, commitment_type)
       Commitment.create!(
         plan:,
         commitment_type:,
         invoice_display_name: args[:invoice_display_name],
-        amount_cents: args[:amount_cents],
+        amount_cents: args[:amount_cents]
       )
+    end
+
+    def create_usage_threshold(plan, args)
+      usage_threshold = plan.usage_thresholds.new(
+        threshold_display_name: args[:threshold_display_name],
+        amount_cents: args[:amount_cents],
+        recurring: args[:recurring] || false
+      )
+
+      usage_threshold.save!
     end
 
     def create_charge(plan, args)
@@ -81,26 +108,26 @@ module Plans
         invoice_display_name: args[:invoice_display_name],
         charge_model: charge_model(args),
         pay_in_advance: args[:pay_in_advance] || false,
-        prorated: args[:prorated] || false,
-        group_properties: (args[:group_properties] || []).map { |gp| GroupProperty.new(gp) },
+        prorated: args[:prorated] || false
       )
 
       properties = args[:properties].presence || Charges::BuildDefaultPropertiesService.call(charge_model(args))
       charge.properties = Charges::FilterChargeModelPropertiesService.call(
         charge:,
-        properties:,
+        properties:
       ).properties
 
       if args[:filters].present?
         charge.save!
         ChargeFilters::CreateOrUpdateBatchService.call(
           charge:,
-          filters_params: args[:filters].map(&:with_indifferent_access),
+          filters_params: args[:filters].map(&:with_indifferent_access)
         ).raise_if_error!
       end
 
       if License.premium?
         charge.invoiceable = args[:invoiceable] unless args[:invoiceable].nil?
+        charge.regroup_paid_fees = args[:regroup_paid_fees] if args.key?(:regroup_paid_fees)
         charge.min_amount_cents = args[:min_amount_cents] || 0
       end
 
@@ -136,8 +163,8 @@ module Plans
           nb_graduated_charges: count_by_charge_model['graduated'] || 0,
           nb_package_charges: count_by_charge_model['package'] || 0,
           organization_id: plan.organization_id,
-          parent_id: plan.parent_id,
-        },
+          parent_id: plan.parent_id
+        }
       )
     end
   end

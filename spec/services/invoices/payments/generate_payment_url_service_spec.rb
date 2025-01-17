@@ -19,12 +19,12 @@ RSpec.describe Invoices::Payments::GeneratePaymentUrlService, type: :service do
         create(
           :stripe_customer,
           customer_id: customer.id,
-          payment_provider: stripe_provider,
+          payment_provider: stripe_provider
         )
 
         customer.update(payment_provider: 'stripe')
 
-        allow(Stripe::Checkout::Session).to receive(:create)
+        allow(::Stripe::Checkout::Session).to receive(:create)
           .and_return({'url' => 'https://example55.com'})
       end
 
@@ -75,7 +75,7 @@ RSpec.describe Invoices::Payments::GeneratePaymentUrlService, type: :service do
     end
 
     context 'when invoice payment status is invalid' do
-      before { invoice.succeeded! }
+      before { invoice.payment_succeeded! }
 
       it 'returns an error' do
         result = generate_payment_url_service.call

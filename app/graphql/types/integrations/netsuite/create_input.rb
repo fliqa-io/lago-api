@@ -13,12 +13,13 @@ module Types
         argument :client_id, String, required: true
         argument :client_secret, String, required: true
         argument :connection_id, String, required: true
-        argument :script_endpoint_url, String, required: false
+        argument :script_endpoint_url, String, required: true
+        argument :token_id, String, required: true
+        argument :token_secret, String, required: true
 
         argument :sync_credit_notes, Boolean, required: false
         argument :sync_invoices, Boolean, required: false
         argument :sync_payments, Boolean, required: false
-        argument :sync_sales_orders, Boolean, required: false
       end
     end
   end

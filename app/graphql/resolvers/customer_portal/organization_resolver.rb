@@ -5,9 +5,9 @@ module Resolvers
     class OrganizationResolver < Resolvers::BaseResolver
       include AuthenticableCustomerPortalUser
 
-      description 'Query customer portal organization'
+      description "Query customer portal organization"
 
-      type Types::OrganizationType, null: true
+      type Types::CustomerPortal::Organizations::Object, null: true
 
       def resolve
         context[:customer_portal_user].organization

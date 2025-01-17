@@ -20,7 +20,7 @@ module Charges
         free_events = if aggregation_result.count >= free_units_count
           free_units_count
         else
-          [aggregation_result.count - free_units_count, 0].max
+          aggregation_result.count
         end
         paid_events = aggregation_result.count - free_events
 
@@ -34,7 +34,7 @@ module Charges
           paid_events:,
           fixed_fee_unit_amount: paid_events.positive? ? fixed_amount : BigDecimal(0),
           fixed_fee_total_amount: compute_fixed_amount.to_s,
-          min_max_adjustment_total_amount: min_max_adjustment_total_amount.to_s,
+          min_max_adjustment_total_amount: min_max_adjustment_total_amount.to_s
         }
       end
 
@@ -59,6 +59,8 @@ module Charges
         (aggregation_result.count - free_units_count) * fixed_amount
       end
 
+      # TODO: add memoization as this method is being called 4 times in the class
+      # TODO: resect properties[:exclude_event] flag
       def free_units_value
         return 0 if last_running_total.zero?
         if free_units_per_events > 0 && free_units_per_events < (aggregation_result.options[:running_total]&.count || 0)
@@ -73,7 +75,7 @@ module Charges
       def free_units_count
         [
           free_units_per_events,
-          aggregation_result.options[:running_total]&.count { |e| e < free_units_per_total_aggregation } || 0,
+          aggregation_result.options[:running_total]&.count { |e| e < free_units_per_total_aggregation } || 0
         ].excluding(0).min || 0
       end
 
@@ -121,21 +123,19 @@ module Charges
       end
 
       def events_values
-        values = aggregation_result.aggregator.per_event_aggregation.event_aggregation
-
-        # NOTE: when performing aggregation for pay in advance, we have to ignore the last event
+        # NOTE: when performing aggregation for pay in advance, we have to ignore the current event
         #       for computing the diff between event included and excluded
         #       see app/services/charges/apply_pay_in_advance_charge_model_service.rb:18
-        values = values[0...-1] if properties[:ignore_last_event]
-
-        values
+        aggregation_result.aggregator.per_event_aggregation(exclude_event: properties[:exclude_event]).event_aggregation
       end
 
       def compute_amount_with_transaction_min_max
+        return @compute_amount_with_transaction_min_max if defined?(@compute_amount_with_transaction_min_max)
+
         remaining_free_events = free_units_per_events
         remaining_free_amount = free_units_per_total_aggregation
 
-        events_values.reduce(0) do |total_amount, event_value|
+        @compute_amount_with_transaction_min_max ||= events_values.reduce(0) do |total_amount, event_value|
           value = event_value
 
           # NOTE: apply free events
@@ -178,7 +178,7 @@ module Charges
       def min_max_adjustment_total_amount
         return BigDecimal(0) unless should_apply_min_max?
 
-        compute_amount_with_transaction_min_max - compute_percentage_amount - compute_fixed_amount
+        BigDecimal(compute_amount_with_transaction_min_max - compute_percentage_amount - compute_fixed_amount)
       end
     end
   end
