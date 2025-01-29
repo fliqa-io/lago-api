@@ -25,7 +25,9 @@ COPY . /app
 ARG SEGMENT_WRITE_KEY
 ARG GOCARDLESS_CLIENT_ID
 ARG GOCARDLESS_CLIENT_SECRET
+ARG VERSION
 
+RUN echo "${VERSION}" > LAGO_VERSION
 RUN apt update && apt upgrade -y
 RUN apt install git libpq-dev curl -y
 
