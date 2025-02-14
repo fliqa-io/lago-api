@@ -50,7 +50,7 @@ jobs:
       - name: Build and push Docker image
         run: |
           echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
-          docker build --file docker/backup/Dockerfile  \
+          docker build --file ./Dockerfile  \
             --tag fliqa.azurecr.io/obp/lago-api:${{ env.VERSION }}  \
             --tag fliqa.azurecr.io/obp/lago-api:${{ env.TAG }}  \
             --build-arg LAGO_VERSION=${{ env.VERSION }} \
