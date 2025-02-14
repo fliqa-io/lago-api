@@ -22,10 +22,12 @@ WORKDIR /app
 
 COPY . /app
 
+ARG LAGO_VERSION
 ARG SEGMENT_WRITE_KEY
 ARG GOCARDLESS_CLIENT_ID
 ARG GOCARDLESS_CLIENT_SECRET
 
+RUN echo "${LAGO_VERSION}" > LAGO_VERSION
 RUN apt update && apt upgrade -y
 RUN apt install git libpq-dev curl postgresql-client -y
 
