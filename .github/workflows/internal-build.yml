@@ -4,8 +4,8 @@ on:
     branches:
       - main
   workflow_dispatch:
-permissions: { }
 jobs:
+  permissions: { }
   build-api-image:
     runs-on: ubuntu-latest
     name: Build API Image
