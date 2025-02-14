@@ -8,7 +8,7 @@
 # * :latest - is production ready build will be deployed by hand or automatically when Kubernetes recycles pods
 # * :test   - is only for testing purposes to be deployed on test only
 #
-name: Docker build Backup database
+name: Lago-API Docker build / Fliqa flavour
 
 on:
   workflow_dispatch:
