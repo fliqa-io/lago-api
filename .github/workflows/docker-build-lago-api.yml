@@ -19,6 +19,7 @@ on:
         type: choice
         options:
           - 1.20.0
+          - 1.29.0
 
       tag:
         description: "Docker tag (test for testing, latest for production)"
@@ -57,8 +58,8 @@ jobs:
       - name: Build and push Docker image
         run: |
           echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
-          docker build --file ./Dockerfile  \
-            --tag fliqa.azurecr.io/obp/lago-api:${{ env.VERSION }}  \
+          docker build --file ./Dockerfile  \          
+            --tag fliqa.azurecr.io/obp/lago-api:${{ env.LAGO_VERSION }}  \
             --tag fliqa.azurecr.io/obp/lago-api:${{ env.TAG }}  \
             --build-arg LAGO_VERSION=${{ env.LAGO_VERSION }} \
             --push .
