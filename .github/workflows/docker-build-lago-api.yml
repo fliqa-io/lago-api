@@ -62,4 +62,5 @@ jobs:
             --tag fliqa.azurecr.io/obp/lago-api:${{ env.LAGO_VERSION }}  \
             --tag fliqa.azurecr.io/obp/lago-api:${{ env.TAG }}  \
             --build-arg LAGO_VERSION=${{ env.LAGO_VERSION }} \
-            --push .
+            --push \
+            .
