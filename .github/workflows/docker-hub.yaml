@@ -1,4 +1,4 @@
-name: Build and Push to Docker Hub  / Fliqa flavour
+name: Lago-API to Docker Hub  / Fliqa flavour
 
 on:
   workflow_dispatch:
@@ -44,6 +44,6 @@ jobs:
         run: |
           docker buildx build . \
             --file Dockerfile \
-            --tag ${{ secrets.DOCKERHUB_USERNAME }}/your-image-name:${{ env.LAGO_VERSION }} \
-            --tag ${{ secrets.DOCKERHUB_USERNAME }}/your-image-name:${{ env.TAG }} \
+            --tag ${{ secrets.DOCKERHUB_USERNAME }}/lagoapi:${{ env.LAGO_VERSION }} \
+            --tag ${{ secrets.DOCKERHUB_USERNAME }}/lagoapi:${{ env.TAG }} \
             --push
