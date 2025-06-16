@@ -13,3 +13,6 @@ else
     bundle exec rails signup:seed_organization
   fi
 fi
+
+echo "✅ Migrations completed successfully."
+exit 0  # Explicitly return success
